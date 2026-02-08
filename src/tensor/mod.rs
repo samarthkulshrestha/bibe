@@ -145,6 +145,49 @@ impl Tensor {
             .sum()
     }
 
+      pub fn transpose(&self) -> Self {
+          assert_eq!(
+              self.shape.len(),
+              2,
+              "transpose() only works on 2D tensors, got {}D.",
+              self.shape.len()
+          );
+
+          let new_shape = vec![self.shape[1], self.shape[0]];
+
+          let new_strides = vec![self.strides[1], self.strides[0]];
+
+          Self {
+              data: self.data.clone(),
+              shape: new_shape,
+              strides: new_strides,
+              requires_grad: self.requires_grad,
+              grad: None,
+          }
+      }
+
+      pub fn t(&self) -> Self {
+          self.transpose()
+      }
+
+      pub fn transpose_contiguous(&self) -> Self {
+          assert_eq!(self.shape.len(), 2, "transpose only works on 2D tensors.");
+
+          let rows = self.shape[0];
+          let cols = self.shape[1];
+
+          let mut new_data = vec![0.0; self.data.len()];
+
+          for i in 0..rows {
+              for j in 0..cols {
+                  let old_idx = i * self.strides[0] + j * self.strides[1];
+                  let new_idx = j * rows + i;
+                  new_data[new_idx] = self.data[old_idx];
+              }
+          }
+
+          Self::new(new_data, vec![cols, rows])
+      }
 }
 
 impl<const N: usize> Index<[usize; N]> for Tensor {
