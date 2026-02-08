@@ -74,4 +74,23 @@ impl Tensor {
 
         Self::new(data, shape.to_vec())
     }
+
+    pub fn xavieru(shape: &[usize]) -> Self {
+        assert!(shape.len() >= 2, "xavier init requires at least 2D shape.");
+
+        let fan_in = shape[shape.len() - 1];
+        let fan_out = shape[shape.len() - 2];
+        let limit = (6.0 / (fan_in + fan_out) as f32).sqrt();
+
+        let mut rng = rng();
+        let uniform = rand_distr::Uniform::new(-limit, limit)
+            .expect("failed to initialise uniform distr");
+
+        let size: usize = shape.iter().product();
+        let data: Vec<f32> = (0..size)
+            .map(|_| uniform.sample(&mut rng) as f32)
+            .collect();
+
+        Self::new(data, shape.to_vec())
+    }
 }
