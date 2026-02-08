@@ -3,5 +3,7 @@
 
 fn main() {
     let rn = bibe::tensor::Tensor::randn(&[2, 2]);
+    let xn = bibe::tensor::Tensor::xaviern(&[2, 2]);
     println!("rn = {:#?}", rn);
+    println!("xn = {:#?}", xn);
 }
