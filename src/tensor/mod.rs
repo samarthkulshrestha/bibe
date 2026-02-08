@@ -2,9 +2,9 @@ use rand::rng;
 use rand_distr::{Distribution, Normal};
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Tensor {
-    data: Vec<f32>,
+    pub data: Vec<f32>,
     shape: Vec<usize>,
     strides: Vec<usize>,
     requires_grad: bool,
@@ -187,6 +187,87 @@ impl Tensor {
         }
 
         Self::new(new_data, vec![cols, rows])
+    }
+
+    pub fn reshape(&self, new_shape: &[usize]) -> Self {
+        let old_size: usize = self.shape.iter().product();
+        let new_size: usize = new_shape.iter().product();
+
+        assert_eq!(
+            old_size, new_size,
+            "cannot reshape tensor of size {} to size {}.",
+            old_size, new_size
+        );
+
+        if !self.is_contiguous() {
+            panic!(
+                "cannot reshape non-contiguous tensor. call .contiguous() first.\n  \
+                    shape: {:?}, strides: {:?}",
+                self.shape, self.strides
+            );
+        }
+
+        Self {
+            data: self.data.clone(),
+            shape: new_shape.to_vec(),
+            strides: Self::compute_strides(new_shape),
+            requires_grad: self.requires_grad,
+            grad: None,
+        }
+    }
+
+    pub fn is_contiguous(&self) -> bool {
+        if self.shape.is_empty() {
+            return true;
+        }
+
+        let expected_strides = Self::compute_strides(&self.shape);
+        self.strides == expected_strides
+    }
+
+    pub fn contiguous(&self) -> Self {
+        if self.is_contiguous() {
+            return self.clone();
+        }
+
+        let size: usize = self.shape.iter().product();
+        let mut new_data = Vec::with_capacity(size);
+
+        self.iterate_indices(|indices| {
+            new_data.push(self.get(indices));
+        });
+
+        Self::new(new_data, self.shape.clone())
+    }
+
+    fn iterate_indices<F>(&self, mut f: F) where F: FnMut(&[usize]),
+    {
+        let mut indices = vec![0; self.shape.len()];
+        let size: usize = self.shape.iter().product();
+
+        for _ in 0..size {
+            f(&indices);
+
+            for i in (0..indices.len()).rev() {
+                indices[i] += 1;
+                if indices[i] < self.shape[i] {
+                    break;
+                }
+                indices[i] = 0;
+            }
+        }
+    }
+}
+
+impl Clone for Tensor {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            requires_grad: self.requires_grad,
+            grad: self.grad.as_ref().map(|g| Box::new((**g).clone())),
+        }
     }
 }
 
