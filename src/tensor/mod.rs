@@ -93,4 +93,21 @@ impl Tensor {
 
         Self::new(data, shape.to_vec())
     }
+
+    pub fn hen(shape: &[usize]) -> Self {
+        assert!(shape.len() >= 2, "he init requires at least 2D shape");
+
+        let fan_in = shape[shape.len() - 1];
+        let std = (2.0 / fan_in as f32).sqrt();
+
+        let mut rng = rng();
+        let normal = Normal::new(0.0, std as f64).unwrap();
+
+        let size: usize = shape.iter().product();
+        let data: Vec<f32> = (0..size)
+            .map(|_| normal.sample(&mut rng) as f32)
+            .collect();
+
+        Self::new(data, shape.to_vec())
+    }
 }
