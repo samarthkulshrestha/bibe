@@ -1,5 +1,6 @@
 use rand::rng;
 use rand_distr::{Distribution, Normal};
+use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
@@ -109,5 +110,55 @@ impl Tensor {
             .collect();
 
         Self::new(data, shape.to_vec())
+    }
+
+    pub fn get(&self, indices: &[usize]) -> f32 {
+        let flat_idx = self.compute_flat_index(indices);
+        self.data[flat_idx]
+    }
+
+    pub fn set(&mut self, indices: &[usize], value: f32) {
+        let flat_idx = self.compute_flat_index(indices);
+        self.data[flat_idx] = value;
+    }
+
+    fn compute_flat_index(&self, indices: &[usize]) -> usize {
+        assert_eq!(
+            indices.len(),
+            self.shape.len(),
+            "index dimensions {} don't match tensor dimensions {}.",
+            indices.len(),
+            self.shape.len()
+        );
+
+        for (i, (&idx, &dim)) in indices.iter().zip(self.shape.iter()).enumerate() {
+            assert!(
+                idx < dim,
+                "index {} out of bounds for dimension {} (size {}).",
+                idx, i, dim
+            );
+        }
+
+        indices.iter()
+            .zip(self.strides.iter())
+            .map(|(&idx, &stride)| idx * stride)
+            .sum()
+    }
+
+}
+
+impl<const N: usize> Index<[usize; N]> for Tensor {
+    type Output = f32;
+
+    fn index(&self, indices: [usize; N]) -> &Self::Output {
+        let flat_idx = self.compute_flat_index(&indices);
+        &self.data[flat_idx]
+    }
+}
+
+impl<const N: usize> IndexMut<[usize; N]> for Tensor {
+    fn index_mut(&mut self, indices: [usize; N]) -> &mut Self::Output {
+        let flat_idx = self.compute_flat_index(&indices);
+        &mut self.data[flat_idx]
     }
 }
