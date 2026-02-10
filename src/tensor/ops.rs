@@ -1,80 +1,63 @@
-use crate::tensor::Tensor;
+use crate::tensor::{broadcast::{broadcast_shapes, broadcast_to}, Tensor};
 
 // ============================================================
 // Binary element-wise operations (require exact shape match)
 // ============================================================
 
-/// Element-wise addition: a + b
-/// Requires a and b to have the same shape (no broadcasting yet)
+/// Element-wise addition with broadcasting: a + b
 pub fn add(a: &Tensor, b: &Tensor) -> Tensor {
-    assert_eq!(
-        a.data.len(),
-        b.data.len(),
-        "tensors must have same shape for element-wise add. got {:?} and {:?}.",
-        a.shape(),
-        b.shape()
-    );
+    let out_shape = broadcast_shapes(a.shape(), b.shape());
+    let a_bc = broadcast_to(a, &out_shape);
+    let b_bc = broadcast_to(b, &out_shape);
 
-    let data: Vec<f32> = a.data.iter()
-        .zip(b.data.iter())
+    let data: Vec<f32> = a_bc.data.iter()
+        .zip(b_bc.data.iter())
         .map(|(&x, &y)| x + y)
         .collect();
 
-    Tensor::new(data, a.shape().to_vec())
+    Tensor::new(data, out_shape)
 }
 
 /// Element-wise subtraction: a - b
 pub fn sub(a: &Tensor, b: &Tensor) -> Tensor {
-    assert_eq!(
-        a.data.len(),
-        b.data.len(),
-        "tensors must have same shape for element-wise sub. got {:?} and {:?}.",
-        a.shape(),
-        b.shape()
-    );
+    let out_shape = broadcast_shapes(a.shape(), b.shape());
+    let a_bc = broadcast_to(a, &out_shape);
+    let b_bc = broadcast_to(b, &out_shape);
 
-    let data: Vec<f32> = a.data.iter()
-        .zip(b.data.iter())
+    let data: Vec<f32> = a_bc.data.iter()
+        .zip(b_bc.data.iter())
         .map(|(&x, &y)| x - y)
         .collect();
 
-    Tensor::new(data, a.shape().to_vec())
+    Tensor::new(data, out_shape)
 }
 
 /// Element-wise multiplication: a * b (Hadamard product)
 pub fn mul(a: &Tensor, b: &Tensor) -> Tensor {
-    assert_eq!(
-        a.data.len(),
-        b.data.len(),
-        "tensors must have same shape for element-wise mul. got {:?} and {:?}.",
-        a.shape(),
-        b.shape()
-    );
+    let out_shape = broadcast_shapes(a.shape(), b.shape());
+    let a_bc = broadcast_to(a, &out_shape);
+    let b_bc = broadcast_to(b, &out_shape);
 
-    let data: Vec<f32> = a.data.iter()
-        .zip(b.data.iter())
+    let data: Vec<f32> = a_bc.data.iter()
+        .zip(b_bc.data.iter())
         .map(|(&x, &y)| x * y)
         .collect();
 
-    Tensor::new(data, a.shape().to_vec())
+    Tensor::new(data, out_shape)
 }
 
 /// Element-wise division: a / b
 pub fn div(a: &Tensor, b: &Tensor) -> Tensor {
-    assert_eq!(
-        a.data.len(),
-        b.data.len(),
-        "tensors must have same shape for element-wise div. got {:?} and {:?}.",
-        a.shape(),
-        b.shape()
-    );
+    let out_shape = broadcast_shapes(a.shape(), b.shape());
+    let a_bc = broadcast_to(a, &out_shape);
+    let b_bc = broadcast_to(b, &out_shape);
 
-    let data: Vec<f32> = a.data.iter()
-        .zip(b.data.iter())
+    let data: Vec<f32> = a_bc.data.iter()
+        .zip(b_bc.data.iter())
         .map(|(&x, &y)| x / y)
         .collect();
 
-    Tensor::new(data, a.shape().to_vec())
+    Tensor::new(data, out_shape)
 }
 
 // ============================================================
