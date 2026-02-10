@@ -274,3 +274,135 @@ impl ops::Sub<f32> for &Tensor {
         sub_scalar(self, rhs)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        let a = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+        let b = Tensor::new(vec![4.0, 5.0, 6.0], vec![3]);
+        let c = add(&a, &b);
+        assert_eq!(c.data, vec![5.0, 7.0, 9.0]);
+    }
+
+    #[test]
+    fn test_sub() {
+        let a = Tensor::new(vec![5.0, 7.0, 9.0], vec![3]);
+        let b = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+        let c = sub(&a, &b);
+        assert_eq!(c.data, vec![4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_mul() {
+        let a = Tensor::new(vec![2.0, 3.0, 4.0], vec![3]);
+        let b = Tensor::new(vec![5.0, 6.0, 7.0], vec![3]);
+        let c = mul(&a, &b);
+        assert_eq!(c.data, vec![10.0, 18.0, 28.0]);
+    }
+
+    #[test]
+    fn test_div() {
+        let a = Tensor::new(vec![10.0, 20.0, 30.0], vec![3]);
+        let b = Tensor::new(vec![2.0, 4.0, 5.0], vec![3]);
+        let c = div(&a, &b);
+        assert_eq!(c.data, vec![5.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_neg() {
+        let a = Tensor::new(vec![1.0, -2.0, 3.0], vec![3]);
+        let c = neg(&a);
+        assert_eq!(c.data, vec![-1.0, 2.0, -3.0]);
+    }
+
+    #[test]
+    fn test_exp() {
+        let a = Tensor::new(vec![0.0, 1.0, 2.0], vec![3]);
+        let c = exp(&a);
+        assert!((c.data[0] - 1.0).abs() < 1e-6);
+        assert!((c.data[1] - 2.718281828).abs() < 1e-6);
+        assert!((c.data[2] - 7.389056099).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_log() {
+        let a = Tensor::new(vec![1.0, 2.718281828, 7.389056099], vec![3]);
+        let c = log(&a);
+        assert!((c.data[0] - 0.0).abs() < 1e-6);
+        assert!((c.data[1] - 1.0).abs() < 1e-6);
+        assert!((c.data[2] - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_log_stability() {
+        let a = Tensor::new(vec![0.0, -1.0], vec![2]);
+        let c = log(&a);
+        // Should use epsilon instead of crashing
+        assert!(c.data[0].is_finite());
+        assert!(c.data[1].is_finite());
+    }
+
+    #[test]
+    fn test_sqrt() {
+        let a = Tensor::new(vec![1.0, 4.0, 9.0, 16.0], vec![4]);
+        let c = sqrt(&a);
+        assert_eq!(c.data, vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_pow() {
+        let a = Tensor::new(vec![2.0, 3.0, 4.0], vec![3]);
+        let c = pow(&a, 2.0);
+        assert_eq!(c.data, vec![4.0, 9.0, 16.0]);
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        let a = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+        let c = add_scalar(&a, 10.0);
+        assert_eq!(c.data, vec![11.0, 12.0, 13.0]);
+    }
+
+    #[test]
+    fn test_mul_scalar() {
+        let a = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+        let c = mul_scalar(&a, 5.0);
+        assert_eq!(c.data, vec![5.0, 10.0, 15.0]);
+    }
+
+    #[test]
+    fn test_div_scalar() {
+        let a = Tensor::new(vec![10.0, 20.0, 30.0], vec![3]);
+        let c = div_scalar(&a, 10.0);
+        assert_eq!(c.data, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_operator_overloading() {
+        let a = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+        let b = Tensor::new(vec![4.0, 5.0, 6.0], vec![3]);
+
+        let c = &a + &b;
+        assert_eq!(c.data, vec![5.0, 7.0, 9.0]);
+
+        let d = &a * &b;
+        assert_eq!(d.data, vec![4.0, 10.0, 18.0]);
+
+        let e = -&a;
+        assert_eq!(e.data, vec![-1.0, -2.0, -3.0]);
+    }
+
+    #[test]
+    fn test_scalar_operator_overloading() {
+        let a = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
+
+        let c = &a + 10.0;
+        assert_eq!(c.data, vec![11.0, 12.0, 13.0]);
+
+        let d = &a * 2.0;
+        assert_eq!(d.data, vec![2.0, 4.0, 6.0]);
+    }
+}
