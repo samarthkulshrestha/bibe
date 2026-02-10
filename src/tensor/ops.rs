@@ -1,0 +1,276 @@
+use crate::tensor::Tensor;
+
+// ============================================================
+// Binary element-wise operations (require exact shape match)
+// ============================================================
+
+/// Element-wise addition: a + b
+/// Requires a and b to have the same shape (no broadcasting yet)
+pub fn add(a: &Tensor, b: &Tensor) -> Tensor {
+    assert_eq!(
+        a.data.len(),
+        b.data.len(),
+        "tensors must have same shape for element-wise add. got {:?} and {:?}.",
+        a.shape(),
+        b.shape()
+    );
+
+    let data: Vec<f32> = a.data.iter()
+        .zip(b.data.iter())
+        .map(|(&x, &y)| x + y)
+        .collect();
+
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise subtraction: a - b
+pub fn sub(a: &Tensor, b: &Tensor) -> Tensor {
+    assert_eq!(
+        a.data.len(),
+        b.data.len(),
+        "tensors must have same shape for element-wise sub. got {:?} and {:?}.",
+        a.shape(),
+        b.shape()
+    );
+
+    let data: Vec<f32> = a.data.iter()
+        .zip(b.data.iter())
+        .map(|(&x, &y)| x - y)
+        .collect();
+
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise multiplication: a * b (Hadamard product)
+pub fn mul(a: &Tensor, b: &Tensor) -> Tensor {
+    assert_eq!(
+        a.data.len(),
+        b.data.len(),
+        "tensors must have same shape for element-wise mul. got {:?} and {:?}.",
+        a.shape(),
+        b.shape()
+    );
+
+    let data: Vec<f32> = a.data.iter()
+        .zip(b.data.iter())
+        .map(|(&x, &y)| x * y)
+        .collect();
+
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise division: a / b
+pub fn div(a: &Tensor, b: &Tensor) -> Tensor {
+    assert_eq!(
+        a.data.len(),
+        b.data.len(),
+        "tensors must have same shape for element-wise div. got {:?} and {:?}.",
+        a.shape(),
+        b.shape()
+    );
+
+    let data: Vec<f32> = a.data.iter()
+        .zip(b.data.iter())
+        .map(|(&x, &y)| x / y)
+        .collect();
+
+    Tensor::new(data, a.shape().to_vec())
+}
+
+// ============================================================
+// Unary element-wise operations
+// ============================================================
+
+/// Element-wise negation: -a
+pub fn neg(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| -x).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise exponential: e^a
+pub fn exp(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x.exp()).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise natural logarithm: ln(a)
+/// Uses epsilon for numerical stability: ln(max(x, epsilon))
+pub fn log(a: &Tensor) -> Tensor {
+    const EPSILON: f32 = 1e-8;
+    let data: Vec<f32> = a.data.iter()
+        .map(|&x| x.max(EPSILON).ln())
+        .collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise square root: √a
+pub fn sqrt(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x.sqrt()).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise power: a^p
+pub fn pow(a: &Tensor, p: f32) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x.powf(p)).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+// ============================================================
+// Scalar operations
+// ============================================================
+
+/// Add scalar to all elements: a + c
+pub fn add_scalar(a: &Tensor, c: f32) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x + c).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Multiply all elements by scalar: a * c
+pub fn mul_scalar(a: &Tensor, c: f32) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x * c).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Divide all elements by scalar: a / c
+pub fn div_scalar(a: &Tensor, c: f32) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x / c).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Subtract scalar from all elements: a - c
+pub fn sub_scalar(a: &Tensor, c: f32) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x - c).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+// ============================================================
+// Tensor methods for ergonomics
+// ============================================================
+
+impl Tensor {
+    pub fn shape(&self) -> &[usize] {
+        &self.shape
+    }
+
+    pub fn add(&self, other: &Tensor) -> Tensor {
+        add(self, other)
+    }
+
+    pub fn sub(&self, other: &Tensor) -> Tensor {
+        sub(self, other)
+    }
+
+    pub fn mul(&self, other: &Tensor) -> Tensor {
+        mul(self, other)
+    }
+
+    pub fn div(&self, other: &Tensor) -> Tensor {
+        div(self, other)
+    }
+
+    pub fn neg(&self) -> Tensor {
+        neg(self)
+    }
+
+    pub fn exp(&self) -> Tensor {
+        exp(self)
+    }
+
+    pub fn log(&self) -> Tensor {
+        log(self)
+    }
+
+    pub fn sqrt(&self) -> Tensor {
+        sqrt(self)
+    }
+
+    pub fn pow(&self, p: f32) -> Tensor {
+        pow(self, p)
+    }
+
+    pub fn add_scalar(&self, c: f32) -> Tensor {
+        add_scalar(self, c)
+    }
+
+    pub fn mul_scalar(&self, c: f32) -> Tensor {
+        mul_scalar(self, c)
+    }
+
+    pub fn div_scalar(&self, c: f32) -> Tensor {
+        div_scalar(self, c)
+    }
+
+    pub fn sub_scalar(&self, c: f32) -> Tensor {
+        sub_scalar(self, c)
+    }
+}
+
+// ============================================================
+// Rust operator overloading for convenience
+// ============================================================
+
+use std::ops;
+
+impl ops::Add<&Tensor> for &Tensor {
+    type Output = Tensor;
+    fn add(self, rhs: &Tensor) -> Tensor {
+        add(self, rhs)
+    }
+}
+
+impl ops::Sub<&Tensor> for &Tensor {
+    type Output = Tensor;
+    fn sub(self, rhs: &Tensor) -> Tensor {
+        sub(self, rhs)
+    }
+}
+
+impl ops::Mul<&Tensor> for &Tensor {
+    type Output = Tensor;
+    fn mul(self, rhs: &Tensor) -> Tensor {
+        mul(self, rhs)
+    }
+}
+
+impl ops::Div<&Tensor> for &Tensor {
+    type Output = Tensor;
+    fn div(self, rhs: &Tensor) -> Tensor {
+        div(self, rhs)
+    }
+}
+
+impl ops::Neg for &Tensor {
+    type Output = Tensor;
+    fn neg(self) -> Tensor {
+        neg(self)
+    }
+}
+
+// Scalar operations
+impl ops::Add<f32> for &Tensor {
+    type Output = Tensor;
+    fn add(self, rhs: f32) -> Tensor {
+        add_scalar(self, rhs)
+    }
+}
+
+impl ops::Mul<f32> for &Tensor {
+    type Output = Tensor;
+    fn mul(self, rhs: f32) -> Tensor {
+        mul_scalar(self, rhs)
+    }
+}
+
+impl ops::Div<f32> for &Tensor {
+    type Output = Tensor;
+    fn div(self, rhs: f32) -> Tensor {
+        div_scalar(self, rhs)
+    }
+}
+
+impl ops::Sub<f32> for &Tensor {
+    type Output = Tensor;
+    fn sub(self, rhs: f32) -> Tensor {
+        sub_scalar(self, rhs)
+    }
+}

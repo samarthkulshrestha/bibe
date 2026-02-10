@@ -1,8 +1,7 @@
-// use std::env;
-// use std::error::Error;
+use bibe::tensor::Tensor;
 
 fn main() {
-    let rn = bibe::tensor::Tensor::randn(&[2, 2]);
+    let rn = Tensor::randn(&[2, 2]);
     let rn_t = rn.t();
     let flat = rn.reshape(&[rn.data.len()]);
 

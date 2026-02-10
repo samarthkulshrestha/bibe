@@ -1,3 +1,5 @@
+pub mod ops;
+
 use rand::rng;
 use rand_distr::{Distribution, Normal};
 use std::ops::{Index, IndexMut};
