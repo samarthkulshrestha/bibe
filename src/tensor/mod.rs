@@ -1,3 +1,4 @@
+pub mod matmul;
 pub mod broadcast;
 pub mod ops;
 
