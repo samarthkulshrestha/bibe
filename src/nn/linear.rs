@@ -30,14 +30,39 @@ impl Linear {
 
     /// Forward pass: y = x @ W^T + b
     ///
-    /// x: [batch, in_features]
-    /// output: [batch, out_features]
+    /// Supports 2D input [batch, in_features] -> [batch, out_features]
+    /// and 3D input [batch, seq, in_features] -> [batch, seq, out_features]
+    /// (flattens leading dims, applies linear, then restores shape).
     pub fn forward(&self, x: &Var) -> Var {
-        let wt = self.weight.transpose(); // [in_features, out_features]
-        let out = x.matmul(&wt); // [batch, out_features]
-        match &self.bias {
-            Some(b) => out.add(b),
-            None => out,
+        let shape = x.tensor().shape().to_vec();
+        let ndim = shape.len();
+
+        if ndim == 2 {
+            let wt = self.weight.transpose(); // [in_features, out_features]
+            let out = x.matmul(&wt);
+            match &self.bias {
+                Some(b) => out.add(b),
+                None => out,
+            }
+        } else if ndim == 3 {
+            let batch = shape[0];
+            let seq = shape[1];
+            let in_f = shape[2];
+
+            // Flatten to 2D: [batch*seq, in_features]
+            let flat = x.reshape(&[batch * seq, in_f]);
+            let wt = self.weight.transpose();
+            let out = flat.matmul(&wt); // [batch*seq, out_features]
+            let out_f = out.tensor().shape()[1];
+
+            // Restore to 3D: [batch, seq, out_features]
+            let out3d = out.reshape(&[batch, seq, out_f]);
+            match &self.bias {
+                Some(b) => out3d.add(b),
+                None => out3d,
+            }
+        } else {
+            panic!("Linear::forward expects 2D or 3D input, got {}D", ndim);
         }
     }
 

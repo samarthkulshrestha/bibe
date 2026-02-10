@@ -193,10 +193,118 @@ pub(crate) struct MatmulBackward {
 
 impl GradFn for MatmulBackward {
     fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
-        let grad_a = matmul(grad_output, &self.b.transpose_contiguous());
-        let grad_b = matmul(&self.a.transpose_contiguous(), grad_output);
+        let grad_a = matmul(grad_output, &self.b.transpose_last2());
+        let grad_b = matmul(&self.a.transpose_last2(), grad_output);
         vec![grad_a, grad_b]
     }
+}
+
+// --- TransposeLast2: d(transpose_last2(A)) = transpose_last2(grad) ---
+
+pub(crate) struct TransposeLast2Backward;
+
+impl GradFn for TransposeLast2Backward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        vec![grad_output.transpose_last2()]
+    }
+}
+
+// --- Reshape: gradient is reshaped back to original shape ---
+
+pub(crate) struct ReshapeBackward {
+    pub input_shape: Vec<usize>,
+}
+
+impl GradFn for ReshapeBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        vec![grad_output.reshape(&self.input_shape)]
+    }
+}
+
+// --- SplitHeads: [batch, seq, num_heads*d_k] -> [batch*num_heads, seq, d_k] ---
+// Permutation: (b, s, h*d_k+d) -> (b*H+h, s, d)
+
+pub(crate) struct SplitHeadsBackward {
+    pub batch: usize,
+    pub num_heads: usize,
+}
+
+impl GradFn for SplitHeadsBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        // Inverse of split_heads is merge_heads
+        vec![merge_heads_tensor(grad_output, self.batch, self.num_heads)]
+    }
+}
+
+// --- MergeHeads: [batch*num_heads, seq, d_k] -> [batch, seq, num_heads*d_k] ---
+// Inverse of SplitHeads
+
+pub(crate) struct MergeHeadsBackward {
+    pub num_heads: usize,
+}
+
+impl GradFn for MergeHeadsBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        // Inverse of merge_heads is split_heads
+        vec![split_heads_tensor(grad_output, self.num_heads)]
+    }
+}
+
+// Tensor-level split/merge helpers used by both forward and backward
+
+/// [batch, seq, num_heads*d_k] -> [batch*num_heads, seq, d_k]
+pub(crate) fn split_heads_tensor(x: &Tensor, num_heads: usize) -> Tensor {
+    let shape = x.shape();
+    assert_eq!(shape.len(), 3);
+    let batch = shape[0];
+    let seq = shape[1];
+    let d_model = shape[2];
+    assert_eq!(d_model % num_heads, 0);
+    let d_k = d_model / num_heads;
+    let x = x.contiguous();
+
+    let mut out = vec![0.0f32; batch * num_heads * seq * d_k];
+
+    for b in 0..batch {
+        for h in 0..num_heads {
+            for s in 0..seq {
+                for d in 0..d_k {
+                    let src = b * (seq * d_model) + s * d_model + h * d_k + d;
+                    let dst = (b * num_heads + h) * (seq * d_k) + s * d_k + d;
+                    out[dst] = x.data[src];
+                }
+            }
+        }
+    }
+
+    Tensor::new(out, vec![batch * num_heads, seq, d_k])
+}
+
+/// [batch*num_heads, seq, d_k] -> [batch, seq, num_heads*d_k]
+pub(crate) fn merge_heads_tensor(x: &Tensor, batch: usize, num_heads: usize) -> Tensor {
+    let shape = x.shape();
+    assert_eq!(shape.len(), 3);
+    assert_eq!(shape[0], batch * num_heads);
+    let seq = shape[1];
+    let d_k = shape[2];
+    let d_model = num_heads * d_k;
+    let x = x.contiguous();
+
+    let mut out = vec![0.0f32; batch * seq * d_model];
+
+    for b in 0..batch {
+        for h in 0..num_heads {
+            for s in 0..seq {
+                for d in 0..d_k {
+                    let src = (b * num_heads + h) * (seq * d_k) + s * d_k + d;
+                    let dst = b * (seq * d_model) + s * d_model + h * d_k + d;
+                    out[dst] = x.data[src];
+                }
+            }
+        }
+    }
+
+    Tensor::new(out, vec![batch, seq, d_model])
 }
 
 // --- MulScalar: d(a*c)/da = c ---
@@ -208,6 +316,16 @@ pub(crate) struct MulScalarBackward {
 impl GradFn for MulScalarBackward {
     fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
         vec![ops::mul_scalar(grad_output, self.scalar)]
+    }
+}
+
+// --- AddScalar: d(x + c)/dx = 1 ---
+
+pub(crate) struct AddScalarBackward;
+
+impl GradFn for AddScalarBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        vec![grad_output.clone()]
     }
 }
 

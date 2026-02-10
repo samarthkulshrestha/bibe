@@ -181,6 +181,41 @@ impl Tensor {
         Self::new(new_data, vec![cols, rows])
     }
 
+    /// Transpose the last two dimensions. Works for 2D and 3D+ tensors.
+    /// For 2D: equivalent to transpose_contiguous.
+    /// For 3D [batch, m, n] -> [batch, n, m].
+    pub fn transpose_last2(&self) -> Self {
+        let ndim = self.shape.len();
+        assert!(ndim >= 2, "transpose_last2 requires at least 2D tensor, got {}D", ndim);
+
+        if ndim == 2 {
+            return self.transpose_contiguous();
+        }
+
+        let t = self.contiguous();
+        let batch_dims: Vec<usize> = t.shape[..ndim - 2].to_vec();
+        let m = t.shape[ndim - 2];
+        let n = t.shape[ndim - 1];
+        let batch_size: usize = batch_dims.iter().product();
+        let slice = m * n;
+
+        let mut new_data = vec![0.0; t.data.len()];
+
+        for bi in 0..batch_size {
+            let off = bi * slice;
+            for i in 0..m {
+                for j in 0..n {
+                    new_data[off + j * m + i] = t.data[off + i * n + j];
+                }
+            }
+        }
+
+        let mut new_shape = batch_dims;
+        new_shape.push(n);
+        new_shape.push(m);
+        Self::new(new_data, new_shape)
+    }
+
     pub fn reshape(&self, new_shape: &[usize]) -> Self {
         let old_size: usize = self.shape.iter().product();
         let new_size: usize = new_shape.iter().product();

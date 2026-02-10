@@ -317,6 +317,89 @@ impl Var {
         Var::from_op(result, Box::new(TransposeBackward), vec![self.clone()])
     }
 
+    /// Transpose last two dimensions (works for 2D and 3D+).
+    pub fn transpose_last2(&self) -> Var {
+        let result = self.tensor().transpose_last2();
+        Var::from_op(result, Box::new(TransposeLast2Backward), vec![self.clone()])
+    }
+
+    /// Reshape the tensor (data must be contiguous).
+    pub fn reshape(&self, new_shape: &[usize]) -> Var {
+        let input_shape = self.tensor().shape().to_vec();
+        let result = self.tensor().reshape(new_shape);
+        Var::from_op(
+            result,
+            Box::new(ReshapeBackward { input_shape }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Split heads: [batch, seq, num_heads * d_k] -> [batch * num_heads, seq, d_k]
+    ///
+    /// Rearranges data so each head's queries/keys/values are contiguous
+    /// in the batch dimension, ready for batched attention.
+    pub fn split_heads(&self, num_heads: usize) -> Var {
+        let shape = self.tensor().shape().to_vec();
+        let batch = shape[0];
+        let result = split_heads_tensor(&self.tensor(), num_heads);
+        Var::from_op(
+            result,
+            Box::new(SplitHeadsBackward { batch, num_heads }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Merge heads: [batch * num_heads, seq, d_k] -> [batch, seq, num_heads * d_k]
+    ///
+    /// Inverse of split_heads. Concatenates head outputs back into d_model.
+    pub fn merge_heads(&self, batch: usize, num_heads: usize) -> Var {
+        let result = merge_heads_tensor(&self.tensor(), batch, num_heads);
+        Var::from_op(
+            result,
+            Box::new(MergeHeadsBackward { num_heads }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Repeat the batch dimension `n` times.
+    ///
+    /// [batch, ...] -> [batch * n, ...]
+    /// Each batch element is repeated `n` consecutive times:
+    /// [a, b] with n=3 -> [a, a, a, b, b, b]
+    ///
+    /// This is used to expand masks for multi-head attention.
+    /// Note: this is a non-differentiable operation (masks are constants).
+    pub fn repeat_batch(&self, n: usize) -> Var {
+        let t = self.tensor();
+        let shape = t.shape().to_vec();
+        let batch = shape[0];
+        let rest: usize = shape[1..].iter().product();
+
+        let mut new_data = Vec::with_capacity(batch * n * rest);
+        for b in 0..batch {
+            let start = b * rest;
+            let slice = &t.data[start..start + rest];
+            for _ in 0..n {
+                new_data.extend_from_slice(slice);
+            }
+        }
+
+        let mut new_shape = shape;
+        new_shape[0] = batch * n;
+        Var::new(Tensor::new(new_data, new_shape), false)
+    }
+
+    /// Add a scalar constant to all elements.
+    pub fn add_scalar(&self, scalar: f32) -> Var {
+        let result = ops::add_scalar(&self.tensor(), scalar);
+        // d(x + c)/dx = 1, so gradient passes through unchanged
+        Var::from_op(
+            result,
+            Box::new(AddScalarBackward),
+            vec![self.clone()],
+        )
+    }
+
     /// Element-wise ReLU.
     pub fn relu(&self) -> Var {
         let input = self.tensor();
