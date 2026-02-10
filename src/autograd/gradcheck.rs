@@ -4,23 +4,27 @@ use super::graph::Var;
 /// Compute numerical gradient of a scalar-valued function at point `x`
 /// using central finite differences: (f(x+eps) - f(x-eps)) / (2*eps).
 ///
+/// The perturbation and difference are computed in f64 to avoid
+/// catastrophic cancellation at small epsilon values (e.g. 1e-5).
+///
 /// `f` takes a `&Tensor` input and returns a scalar `f32` (the loss value).
 pub fn numerical_gradient(
     f: &dyn Fn(&Tensor) -> f32,
     x: &Tensor,
     eps: f32,
 ) -> Tensor {
+    let eps64 = eps as f64;
     let mut grad_data = vec![0.0f32; x.data.len()];
 
     for i in 0..x.data.len() {
         let mut x_plus = x.data.clone();
         let mut x_minus = x.data.clone();
-        x_plus[i] += eps;
-        x_minus[i] -= eps;
+        x_plus[i] = (x.data[i] as f64 + eps64) as f32;
+        x_minus[i] = (x.data[i] as f64 - eps64) as f32;
 
-        let loss_plus = f(&Tensor::new(x_plus, x.shape().to_vec()));
-        let loss_minus = f(&Tensor::new(x_minus, x.shape().to_vec()));
-        grad_data[i] = (loss_plus - loss_minus) / (2.0 * eps);
+        let loss_plus = f(&Tensor::new(x_plus, x.shape().to_vec())) as f64;
+        let loss_minus = f(&Tensor::new(x_minus, x.shape().to_vec())) as f64;
+        grad_data[i] = ((loss_plus - loss_minus) / (2.0 * eps64)) as f32;
     }
 
     Tensor::new(grad_data, x.shape().to_vec())
