@@ -1,20 +1,29 @@
-use bibe::tensor::{Tensor, matmul::matmul};
+use bibe::tensor::Tensor;
+use bibe::tensor::stability::{stable_softmax, logsumexp, has_nan, has_inf, all_finite};
 
 fn main() {
-    // 2D: [2, 3] @ [3, 4] → [2, 4]
-    let a = Tensor::randn(&[2, 3]);
-    let b = Tensor::randn(&[3, 4]);
-    let c = matmul(&a, &b);
-    println!("c = {:#?}", c);
+    // Softmax on safe values
+    let x = Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let sm = stable_softmax(&x, 1);
+    println!("softmax(x, dim=1):");
+    for i in 0..2 {
+        let row_sum: f32 = (0..3).map(|j| sm.get(&[i, j])).sum();
+        println!("  row {}: [{:.4}, {:.4}, {:.4}] sum={:.6}",
+            i, sm.get(&[i, 0]), sm.get(&[i, 1]), sm.get(&[i, 2]), row_sum);
+    }
 
-    // Works with transposed tensors
-    let bt = Tensor::randn(&[4, 3]);
-    let d = matmul(&a, &bt.transpose());  // [2, 3] @ [4, 3].T = [2, 3] @ [3, 4]
-    println!("d = {:#?}", d);
+    // Softmax on large values (overflow test)
+    let big = Tensor::new(vec![1000.0, 1000.1, 1000.2], vec![1, 3]);
+    let sm_big = stable_softmax(&big, 1);
+    println!("\nsoftmax([1000.0, 1000.1, 1000.2]):");
+    println!("  [{:.4}, {:.4}, {:.4}]",
+        sm_big.get(&[0, 0]), sm_big.get(&[0, 1]), sm_big.get(&[0, 2]));
+    println!("  all_finite: {}", all_finite(&sm_big));
+    println!("  has_nan: {}", has_nan(&sm_big));
+    println!("  has_inf: {}", has_inf(&sm_big));
 
-    // Batched: [8, 32, 64] @ [8, 64, 32] → [8, 32, 32]
-    let q = Tensor::randn(&[8, 32, 64]);
-    let k = Tensor::randn(&[8, 64, 32]);
-    let attn = matmul(&q, &k);  // attention scores
-    println!("attn = {:#?}", attn);
+    // Logsumexp
+    let lse = logsumexp(&x, 1);
+    println!("\nlogsumexp(x, dim=1): [{:.4}, {:.4}]",
+        lse.get(&[0]), lse.get(&[1]));
 }
