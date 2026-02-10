@@ -98,6 +98,43 @@ pub fn pow(a: &Tensor, p: f32) -> Tensor {
     Tensor::new(data, a.shape().to_vec())
 }
 
+/// Element-wise ReLU: max(0, x)
+pub fn relu(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x.max(0.0)).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise sigmoid: 1 / (1 + exp(-x))
+pub fn sigmoid(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| {
+        if x >= 0.0 {
+            1.0 / (1.0 + (-x).exp())
+        } else {
+            let ex = x.exp();
+            ex / (1.0 + ex)
+        }
+    }).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise tanh
+pub fn tanh(a: &Tensor) -> Tensor {
+    let data: Vec<f32> = a.data.iter().map(|&x| x.tanh()).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
+/// Element-wise GeLU (Gaussian Error Linear Unit):
+/// GeLU(x) ≈ 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+pub fn gelu(a: &Tensor) -> Tensor {
+    const SQRT_2_OVER_PI: f32 = 0.7978845608; // √(2/π)
+    const C: f32 = 0.044715;
+    let data: Vec<f32> = a.data.iter().map(|&x| {
+        let inner = SQRT_2_OVER_PI * (x + C * x * x * x);
+        0.5 * x * (1.0 + inner.tanh())
+    }).collect();
+    Tensor::new(data, a.shape().to_vec())
+}
+
 // ============================================================
 // Scalar operations
 // ============================================================

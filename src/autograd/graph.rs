@@ -317,6 +317,48 @@ impl Var {
         Var::from_op(result, Box::new(TransposeBackward), vec![self.clone()])
     }
 
+    /// Element-wise ReLU.
+    pub fn relu(&self) -> Var {
+        let input = self.tensor();
+        let result = ops::relu(&input);
+        Var::from_op(
+            result,
+            Box::new(ReluBackward { input }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Element-wise sigmoid.
+    pub fn sigmoid(&self) -> Var {
+        let result = ops::sigmoid(&self.tensor());
+        Var::from_op(
+            result.clone(),
+            Box::new(SigmoidBackward { output: result.clone() }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Element-wise tanh.
+    pub fn tanh(&self) -> Var {
+        let result = ops::tanh(&self.tensor());
+        Var::from_op(
+            result.clone(),
+            Box::new(TanhBackward { output: result.clone() }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Element-wise GeLU.
+    pub fn gelu(&self) -> Var {
+        let input = self.tensor();
+        let result = ops::gelu(&input);
+        Var::from_op(
+            result,
+            Box::new(GeluBackward { input }),
+            vec![self.clone()],
+        )
+    }
+
     /// Softmax along a dimension.
     pub fn softmax(&self, dim: usize) -> Var {
         let input = self.tensor();

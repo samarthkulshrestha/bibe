@@ -245,3 +245,79 @@ impl GradFn for SoftmaxBackward {
         vec![ops::mul(&self.output, &shifted)]
     }
 }
+
+// --- ReLU: d(relu(x))/dx = 1 if x > 0, else 0 ---
+
+pub(crate) struct ReluBackward {
+    pub input: Tensor,
+}
+
+impl GradFn for ReluBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        let mask: Vec<f32> = self.input.data.iter()
+            .map(|&x| if x > 0.0 { 1.0 } else { 0.0 })
+            .collect();
+        let mask_t = Tensor::new(mask, self.input.shape().to_vec());
+        vec![ops::mul(grad_output, &mask_t)]
+    }
+}
+
+// --- Sigmoid: d(σ(x))/dx = σ(x) * (1 - σ(x)) ---
+
+pub(crate) struct SigmoidBackward {
+    pub output: Tensor,
+}
+
+impl GradFn for SigmoidBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        // grad = grad_out * σ * (1 - σ)
+        let one_minus_out: Vec<f32> = self.output.data.iter()
+            .map(|&s| 1.0 - s)
+            .collect();
+        let one_minus_t = Tensor::new(one_minus_out, self.output.shape().to_vec());
+        let local_grad = ops::mul(&self.output, &one_minus_t);
+        vec![ops::mul(grad_output, &local_grad)]
+    }
+}
+
+// --- Tanh: d(tanh(x))/dx = 1 - tanh²(x) ---
+
+pub(crate) struct TanhBackward {
+    pub output: Tensor,
+}
+
+impl GradFn for TanhBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        // grad = grad_out * (1 - tanh(x)²)
+        let one_minus_sq: Vec<f32> = self.output.data.iter()
+            .map(|&t| 1.0 - t * t)
+            .collect();
+        let local_grad = Tensor::new(one_minus_sq, self.output.shape().to_vec());
+        vec![ops::mul(grad_output, &local_grad)]
+    }
+}
+
+// --- GeLU: fused backward ---
+// GeLU(x) = 0.5 * x * (1 + tanh(s))  where s = √(2/π) * (x + 0.044715 * x³)
+// GeLU'(x) = 0.5 * (1 + tanh(s)) + 0.5 * x * sech²(s) * s'
+// where s' = √(2/π) * (1 + 0.134145 * x²)
+
+pub(crate) struct GeluBackward {
+    pub input: Tensor,
+}
+
+impl GradFn for GeluBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        const SQRT_2_OVER_PI: f32 = 0.7978845608;
+        const C: f32 = 0.044715;
+        let local: Vec<f32> = self.input.data.iter().map(|&x| {
+            let s = SQRT_2_OVER_PI * (x + C * x * x * x);
+            let tanh_s = s.tanh();
+            let sech2_s = 1.0 - tanh_s * tanh_s;
+            let ds_dx = SQRT_2_OVER_PI * (1.0 + 3.0 * C * x * x);
+            0.5 * (1.0 + tanh_s) + 0.5 * x * sech2_s * ds_dx
+        }).collect();
+        let local_grad = Tensor::new(local, self.input.shape().to_vec());
+        vec![ops::mul(grad_output, &local_grad)]
+    }
+}
