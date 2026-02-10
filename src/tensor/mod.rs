@@ -7,13 +7,11 @@ use rand::rng;
 use rand_distr::{Distribution, Normal};
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
     pub data: Vec<f32>,
     shape: Vec<usize>,
     strides: Vec<usize>,
-    requires_grad: bool,
-    grad: Option<Box<Tensor>>,
 }
 
 impl Tensor {
@@ -21,16 +19,7 @@ impl Tensor {
         assert_eq!(data.len(), shape.iter().product());
 
         let strides = Self::compute_strides(&shape);
-        Self { data, shape, strides, requires_grad: false, grad: None }
-    }
-
-    pub fn new_grad(data: Vec<f32>, shape: Vec<usize>,
-        requires_grad: bool, grad: Option<Box<Tensor>>)
-    -> Self {
-        let mut tensor = Self::new(data, shape);
-        tensor.requires_grad = requires_grad;
-        tensor.grad = grad;
-        tensor
+        Self { data, shape, strides }
     }
 
     fn compute_strides(shape: &[usize]) -> Vec<usize> {
@@ -166,8 +155,6 @@ impl Tensor {
             data: self.data.clone(),
             shape: new_shape,
             strides: new_strides,
-            requires_grad: self.requires_grad,
-            grad: None,
         }
     }
 
@@ -216,8 +203,6 @@ impl Tensor {
             data: self.data.clone(),
             shape: new_shape.to_vec(),
             strides: Self::compute_strides(new_shape),
-            requires_grad: self.requires_grad,
-            grad: None,
         }
     }
 
@@ -260,18 +245,6 @@ impl Tensor {
                 }
                 indices[i] = 0;
             }
-        }
-    }
-}
-
-impl Clone for Tensor {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            shape: self.shape.clone(),
-            strides: self.strides.clone(),
-            requires_grad: self.requires_grad,
-            grad: self.grad.as_ref().map(|g| Box::new((**g).clone())),
         }
     }
 }
