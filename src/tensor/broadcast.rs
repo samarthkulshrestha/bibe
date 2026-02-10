@@ -49,9 +49,10 @@ pub fn broadcast_to(tensor: &Tensor, target_shape: &[usize]) -> Tensor {
 
     let mut target_indices = vec![0usize; ndim];
 
+    let src_strides = compute_strides_for(&padded_shape);
+
     for _ in 0..target_size {
         let mut src_flat = 0;
-        let src_strides = compute_strides_for(&padded_shape);
         for d in 0..ndim {
             let src_idx = if padded_shape[d] == 1 { 0 } else { target_indices[d] };
             src_flat += src_idx * src_strides[d];
@@ -97,6 +98,7 @@ pub fn reduce_sum(tensor: &Tensor, dim: usize) -> Tensor {
     let ndim = shape.len();
     let mut indices = vec![0usize; ndim];
     let total: usize = shape.iter().product();
+    let out_strides = compute_strides_for(&out_shape);
 
     for _ in 0..total {
         // Compute output flat index (skip the reduced dimension)
@@ -105,7 +107,6 @@ pub fn reduce_sum(tensor: &Tensor, dim: usize) -> Tensor {
             .map(|(_, &idx)| idx)
             .collect();
 
-        let out_strides = compute_strides_for(&out_shape);
         let out_flat: usize = out_indices.iter()
             .zip(out_strides.iter())
             .map(|(&idx, &stride)| idx * stride)
@@ -149,6 +150,7 @@ pub fn reduce_max(tensor: &Tensor, dim: usize) -> Tensor {
     let ndim = shape.len();
     let mut indices = vec![0usize; ndim];
     let total: usize = shape.iter().product();
+    let out_strides = compute_strides_for(&out_shape);
 
     for _ in 0..total {
         let out_indices: Vec<usize> = indices.iter().enumerate()
@@ -156,7 +158,6 @@ pub fn reduce_max(tensor: &Tensor, dim: usize) -> Tensor {
             .map(|(_, &idx)| idx)
             .collect();
 
-        let out_strides = compute_strides_for(&out_shape);
         let out_flat: usize = out_indices.iter()
             .zip(out_strides.iter())
             .map(|(&idx, &stride)| idx * stride)
