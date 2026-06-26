@@ -80,6 +80,15 @@ impl Var {
         self.inner.borrow_mut().grad = None;
     }
 
+    /// Mutably access the underlying tensor data.
+    ///
+    /// Intended for optimizers that update parameters in place after a
+    /// backward pass. Because clones share storage via `Rc`, the update is
+    /// visible through every handle to this variable.
+    pub fn with_data_mut<R>(&self, f: impl FnOnce(&mut Tensor) -> R) -> R {
+        f(&mut self.inner.borrow_mut().tensor)
+    }
+
     /// Run reverse-mode automatic differentiation from this node.
     ///
     /// This should be called on a scalar (single-element) loss tensor.
@@ -467,6 +476,27 @@ mod tests {
                 i, x, y, tol
             );
         }
+    }
+
+    #[test]
+    fn test_with_data_mut_updates_value() {
+        let p = Var::new(Tensor::new(vec![1.0, 2.0, 3.0], vec![3]), true);
+        p.with_data_mut(|t| {
+            for x in t.data.iter_mut() {
+                *x *= 10.0;
+            }
+        });
+        approx_eq(&p.tensor().data, &[10.0, 20.0, 30.0], 1e-6);
+    }
+
+    #[test]
+    fn test_with_data_mut_shared_across_clones() {
+        // Clones share storage (Rc), so an optimizer holding a clone
+        // must update the same tensor seen elsewhere.
+        let p = Var::new(Tensor::new(vec![1.0, 1.0], vec![2]), true);
+        let handle = p.clone();
+        handle.with_data_mut(|t| t.data[0] = 5.0);
+        approx_eq(&p.tensor().data, &[5.0, 1.0], 1e-6);
     }
 
     #[test]
