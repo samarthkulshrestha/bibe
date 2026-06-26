@@ -461,6 +461,40 @@ impl Var {
             vec![self.clone()],
         )
     }
+
+    /// Mean along a dimension, keeping that dimension as size 1.
+    ///
+    /// Keeping the reduced dimension (e.g. `[B, S, D] -> [B, S, 1]`) lets the
+    /// result broadcast back against the input, which is what normalization
+    /// layers need.
+    pub fn mean(&self, dim: usize) -> Var {
+        let input = self.tensor();
+        let input_shape = input.shape().to_vec();
+        let n = input_shape[dim];
+
+        let summed = crate::tensor::broadcast::reduce_sum(&input, dim);
+        let mean = ops::mul_scalar(&summed, 1.0 / n as f32);
+
+        let mut kept_shape = input_shape.clone();
+        kept_shape[dim] = 1;
+        let mean = mean.reshape(&kept_shape);
+
+        Var::from_op(
+            mean,
+            Box::new(MeanDimBackward { input_shape, n }),
+            vec![self.clone()],
+        )
+    }
+
+    /// Population variance along a dimension, keeping that dimension as size 1.
+    ///
+    /// Composed from differentiable primitives (`mean` + centered square), so
+    /// its gradient flows automatically through the graph.
+    pub fn var(&self, dim: usize) -> Var {
+        let mean = self.mean(dim);
+        let centered = self.sub(&mean);
+        centered.mul(&centered).mean(dim)
+    }
 }
 
 #[cfg(test)]
@@ -476,6 +510,47 @@ mod tests {
                 i, x, y, tol
             );
         }
+    }
+
+    use crate::autograd::gradcheck::gradcheck;
+
+    #[test]
+    fn test_mean_dim_forward() {
+        let a = Var::new(
+            Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]),
+            false,
+        );
+        let m = a.mean(1);
+        // Reduced dim is kept as size 1 for broadcasting.
+        assert_eq!(m.tensor().shape(), &[2, 1]);
+        approx_eq(&m.tensor().data, &[2.0, 5.0], 1e-6);
+    }
+
+    #[test]
+    fn test_mean_dim_backward() {
+        let x = Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+        // Non-linear loss so the gradient is position-dependent.
+        let (ok, err) = gradcheck(&|v: &Var| v.mean(1).pow(2.0).sum(), &x, 1e-3, 1e-3);
+        assert!(ok, "mean backward gradcheck failed, max rel err = {err}");
+    }
+
+    #[test]
+    fn test_var_dim_forward() {
+        let a = Var::new(
+            Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]),
+            false,
+        );
+        let v = a.var(1);
+        assert_eq!(v.tensor().shape(), &[2, 1]);
+        // Population variance of [1,2,3] and [4,5,6] is 2/3.
+        approx_eq(&v.tensor().data, &[2.0 / 3.0, 2.0 / 3.0], 1e-6);
+    }
+
+    #[test]
+    fn test_var_dim_backward() {
+        let x = Tensor::new(vec![1.0, 2.0, 4.0, 8.0, 0.5, 3.0], vec![2, 3]);
+        let (ok, err) = gradcheck(&|v: &Var| v.var(1).sum(), &x, 1e-3, 1e-3);
+        assert!(ok, "var backward gradcheck failed, max rel err = {err}");
     }
 
     #[test]

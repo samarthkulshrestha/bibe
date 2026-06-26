@@ -184,6 +184,23 @@ impl GradFn for SumBackward {
     }
 }
 
+// --- MeanDim: mean along `dim`, keeping that dim as size 1 ---
+// d(mean_k)/d(x_i) = 1/n for each of the n elements reduced into output k.
+
+pub(crate) struct MeanDimBackward {
+    pub input_shape: Vec<usize>,
+    pub n: usize,
+}
+
+impl GradFn for MeanDimBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        // grad_output has the kept-dim shape ([.., 1, ..]); spread it back over
+        // the reduced dimension and scale by 1/n.
+        let spread = broadcast_to(grad_output, &self.input_shape);
+        vec![ops::mul_scalar(&spread, 1.0 / self.n as f32)]
+    }
+}
+
 // --- Matmul: dL/dA = dL/dC @ B^T, dL/dB = A^T @ dL/dC ---
 
 pub(crate) struct MatmulBackward {
