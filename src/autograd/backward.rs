@@ -201,6 +201,27 @@ impl GradFn for MeanDimBackward {
     }
 }
 
+// --- Clamp: gradient passes through inside (min, max), zero at/outside ---
+
+pub(crate) struct ClampBackward {
+    pub input: Tensor,
+    pub min: f32,
+    pub max: f32,
+}
+
+impl GradFn for ClampBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        let data: Vec<f32> = self
+            .input
+            .data
+            .iter()
+            .zip(grad_output.data.iter())
+            .map(|(&x, &g)| if x > self.min && x < self.max { g } else { 0.0 })
+            .collect();
+        vec![Tensor::new(data, grad_output.shape().to_vec())]
+    }
+}
+
 // --- Embedding: gather rows by index; scatter-add gradients on backward ---
 // Each output row i was copied from weight row indices[i], so the gradient
 // for a weight row is the sum of grad_output rows that looked it up.

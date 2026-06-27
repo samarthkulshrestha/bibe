@@ -462,6 +462,21 @@ impl Var {
         )
     }
 
+    /// Clamp each element to the range `[min, max]`.
+    ///
+    /// The gradient flows through elements strictly inside the range and is
+    /// zero at or beyond the bounds. Useful for keeping values away from the
+    /// singularities of `log` before taking it.
+    pub fn clamp(&self, min: f32, max: f32) -> Var {
+        let input = self.tensor();
+        let result = crate::tensor::stability::clip(&input, min, max);
+        Var::from_op(
+            result,
+            Box::new(ClampBackward { input, min, max }),
+            vec![self.clone()],
+        )
+    }
+
     /// Mean along a dimension, keeping that dimension as size 1.
     ///
     /// Keeping the reduced dimension (e.g. `[B, S, D] -> [B, S, 1]`) lets the
@@ -513,6 +528,31 @@ mod tests {
     }
 
     use crate::autograd::gradcheck::gradcheck;
+
+    #[test]
+    fn test_clamp_forward() {
+        let a = Var::new(Tensor::new(vec![-2.0, 0.5, 3.0], vec![3]), false);
+        let c = a.clamp(0.0, 1.0);
+        approx_eq(&c.tensor().data, &[0.0, 0.5, 1.0], 1e-6);
+    }
+
+    #[test]
+    fn test_clamp_backward_passes_inside_blocks_outside() {
+        // Gradient is 1 for elements strictly inside the range, 0 outside.
+        let a = Var::new(Tensor::new(vec![-1.0, 0.3, 0.7, 2.0], vec![4]), true);
+        let loss = a.clamp(0.0, 1.0).sum();
+        loss.backward();
+        approx_eq(&a.grad().unwrap().data, &[0.0, 1.0, 1.0, 0.0], 1e-6);
+    }
+
+    #[test]
+    fn test_clamp_backward_gradcheck() {
+        // Values kept well clear of the boundaries so finite differences do
+        // not straddle the non-differentiable kinks.
+        let x = Tensor::new(vec![-1.0, 0.3, 0.7, 2.0], vec![4]);
+        let (ok, err) = gradcheck(&|v: &Var| v.clamp(0.0, 1.0).pow(2.0).sum(), &x, 1e-4, 1e-3);
+        assert!(ok, "clamp gradcheck failed, max rel err = {err}");
+    }
 
     #[test]
     fn test_mean_dim_forward() {
