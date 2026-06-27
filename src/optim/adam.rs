@@ -58,6 +58,16 @@ impl Adam {
         }
     }
 
+    /// Set the learning rate (used to apply a schedule between steps).
+    pub fn set_lr(&mut self, lr: f32) {
+        self.lr = lr;
+    }
+
+    /// The current learning rate.
+    pub fn lr(&self) -> f32 {
+        self.lr
+    }
+
     /// Clear gradients on all tracked parameters.
     pub fn zero_grad(&self) {
         for p in &self.params {
@@ -143,6 +153,15 @@ mod tests {
 
         // Moves by -lr * sign(g) = -0.1, not a tiny step.
         approx_eq(&w.tensor().data, &[-0.1], 1e-4);
+    }
+
+    #[test]
+    fn test_set_and_get_lr() {
+        let p = Var::new(Tensor::new(vec![0.0], vec![1]), true);
+        let mut opt = Adam::new(vec![p], 0.1);
+        assert!((opt.lr() - 0.1).abs() < 1e-9);
+        opt.set_lr(0.05);
+        assert!((opt.lr() - 0.05).abs() < 1e-9);
     }
 
     #[test]
