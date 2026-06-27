@@ -57,6 +57,44 @@ pub fn focal_loss(pred: &Var, target: &Var, alpha: f32, gamma: f32) -> Var {
     pos.add(&neg).sum().mul_scalar(-1.0 / n)
 }
 
+/// Cosine similarity between two equal-length vectors, as a scalar `Var`.
+fn cosine_similarity(a: &Var, b: &Var) -> Var {
+    let dot = a.mul(b).sum();
+    let norm_a = a.mul(a).sum().sqrt();
+    let norm_b = b.mul(b).sum().sqrt();
+    dot.div(&norm_a.mul(&norm_b))
+}
+
+/// Contrastive trace loss (InfoNCE) over cosine similarities.
+///
+/// ```text
+/// L = -log( exp(sim(a, pos)/τ) / (exp(sim(a, pos)/τ) + Σ_n exp(sim(a, neg_n)/τ)) )
+/// ```
+///
+/// Pulls the anchor's representation toward the positive and away from the
+/// negatives at temperature `temperature` (e.g. 0.07). Cosine similarity is
+/// bounded in `[-1, 1]`, so the scaled logits cannot overflow `exp` and no
+/// max-subtraction is needed.
+pub fn contrastive_loss(
+    anchor: &Var,
+    positive: &Var,
+    negatives: &[Var],
+    temperature: f32,
+) -> Var {
+    let inv_t = 1.0 / temperature;
+    let pos_logit = cosine_similarity(anchor, positive).mul_scalar(inv_t);
+
+    // denom = exp(pos) + Σ_n exp(neg_n)
+    let mut denom = pos_logit.exp();
+    for neg in negatives {
+        let neg_logit = cosine_similarity(anchor, neg).mul_scalar(inv_t);
+        denom = denom.add(&neg_logit.exp());
+    }
+
+    // -log(exp(pos)/denom) = log(denom) - pos
+    denom.log().sub(&pos_logit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +161,55 @@ mod tests {
         let (ok, err) =
             gradcheck(&|p: &Var| focal_loss(p, &target, 0.75, 2.0), &pred, 1e-3, 3e-3);
         assert!(ok, "focal gradcheck failed, max rel err = {err}");
+    }
+
+    #[test]
+    fn test_contrastive_known_value() {
+        // τ=1, sim(a,pos)=1, sim(a,neg)=0 -> log(e + 1) - 1 ≈ 0.31326.
+        let anchor = Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false);
+        let positive = Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false);
+        let negatives = vec![Var::new(Tensor::new(vec![0.0, 1.0], vec![2]), false)];
+        let loss = contrastive_loss(&anchor, &positive, &negatives, 1.0);
+        let expected = (std::f32::consts::E + 1.0).ln() - 1.0;
+        assert!((loss.tensor().data[0] - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_contrastive_lower_when_positive_aligned() {
+        let anchor = Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false);
+        let neg = Var::new(Tensor::new(vec![0.0, 1.0], vec![2]), false);
+
+        // Positive aligned with anchor, negative orthogonal -> low loss.
+        let aligned = contrastive_loss(
+            &anchor,
+            &Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false),
+            &[neg.clone()],
+            0.5,
+        );
+        // Positive orthogonal, negative aligned with anchor -> high loss.
+        let misaligned = contrastive_loss(
+            &anchor,
+            &Var::new(Tensor::new(vec![0.0, 1.0], vec![2]), false),
+            &[Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false)],
+            0.5,
+        );
+        assert!(
+            aligned.tensor().data[0] < misaligned.tensor().data[0],
+            "aligned positive should give lower loss"
+        );
+    }
+
+    #[test]
+    fn test_contrastive_gradient_numeric() {
+        let anchor = Tensor::new(vec![0.5, 0.3], vec![2]);
+        let positive = Var::new(Tensor::new(vec![1.0, 0.0], vec![2]), false);
+        let negatives = vec![Var::new(Tensor::new(vec![0.0, 1.0], vec![2]), false)];
+        let (ok, err) = gradcheck(
+            &|a: &Var| contrastive_loss(a, &positive, &negatives, 1.0),
+            &anchor,
+            1e-3,
+            3e-3,
+        );
+        assert!(ok, "contrastive gradcheck failed, max rel err = {err}");
     }
 }
