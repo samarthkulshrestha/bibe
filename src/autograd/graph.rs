@@ -80,6 +80,17 @@ impl Var {
         self.inner.borrow_mut().grad = None;
     }
 
+    /// Scale this variable's accumulated gradient in place by `factor`.
+    ///
+    /// A no-op if no gradient has been computed yet. Used by gradient clipping
+    /// to rescale all gradients before the optimizer step.
+    pub fn scale_grad(&self, factor: f32) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(g) = &inner.grad {
+            inner.grad = Some(ops::mul_scalar(g, factor));
+        }
+    }
+
     /// Mutably access the underlying tensor data.
     ///
     /// Intended for optimizers that update parameters in place after a
@@ -591,6 +602,23 @@ mod tests {
         let x = Tensor::new(vec![1.0, 2.0, 4.0, 8.0, 0.5, 3.0], vec![2, 3]);
         let (ok, err) = gradcheck(&|v: &Var| v.var(1).sum(), &x, 1e-3, 1e-3);
         assert!(ok, "var backward gradcheck failed, max rel err = {err}");
+    }
+
+    #[test]
+    fn test_scale_grad_scales_in_place() {
+        let a = Var::new(Tensor::new(vec![2.0, 3.0], vec![2]), true);
+        let loss = a.mul_scalar(2.0).sum(); // grad = [2, 2]
+        loss.backward();
+        a.scale_grad(0.5);
+        approx_eq(&a.grad().unwrap().data, &[1.0, 1.0], 1e-6);
+    }
+
+    #[test]
+    fn test_scale_grad_noop_without_grad() {
+        let a = Var::new(Tensor::new(vec![1.0], vec![1]), true);
+        // No backward has run, so there is no gradient yet.
+        a.scale_grad(10.0);
+        assert!(a.grad().is_none());
     }
 
     #[test]
