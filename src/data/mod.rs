@@ -6,7 +6,7 @@ pub mod window;
 pub mod loader;
 
 pub use trace::{Trace, TraceEvent, TraceLabel};
-pub use parser::{parse_trace, parse_trace_file};
+pub use parser::{parse_trace, parse_trace_file, serialize_trace};
 pub use vocab::Vocabulary;
 pub use normalize::{aux_features, N_AUX};
 pub use window::{extract_windows, TraceWindow};

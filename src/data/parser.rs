@@ -92,6 +92,32 @@ pub fn parse_trace_file(path: &Path) -> Result<Trace, String> {
     parse_trace(&text)
 }
 
+/// Serialize a trace back to the trace-delimited text format. The inverse of
+/// [`parse_trace`]: `parse_trace(&serialize_trace(t))` reproduces `t`.
+pub fn serialize_trace(trace: &Trace) -> String {
+    let mut out = String::new();
+    match trace.label {
+        TraceLabel::Normal => out.push_str("# label=normal\n"),
+        TraceLabel::Anomalous { root_cause } => {
+            out.push_str(&format!("# label=anomalous root_cause={root_cause}\n"));
+        }
+    }
+    out.push_str("# function timestamp depth l1 l2 llc branch\n");
+    for e in &trace.events {
+        out.push_str(&format!(
+            "{} {} {} {} {} {} {}\n",
+            e.function,
+            e.timestamp_us,
+            e.call_depth,
+            e.l1_misses,
+            e.l2_misses,
+            e.llc_misses,
+            e.branch_misses,
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +195,21 @@ use 1020 1 5 2 1 3
     fn test_anomalous_without_root_cause_is_error() {
         let text = "# label=anomalous\nmalloc 1000 0 0 0 0 0\n";
         assert!(parse_trace(text).is_err());
+    }
+
+    #[test]
+    fn test_serialize_round_trips_normal() {
+        let original = parse_trace(NORMAL).unwrap();
+        let restored = parse_trace(&serialize_trace(&original)).unwrap();
+        assert_eq!(restored.label, original.label);
+        assert_eq!(restored.events, original.events);
+    }
+
+    #[test]
+    fn test_serialize_round_trips_anomalous() {
+        let original = parse_trace(ANOMALOUS).unwrap();
+        let restored = parse_trace(&serialize_trace(&original)).unwrap();
+        assert_eq!(restored.label, TraceLabel::Anomalous { root_cause: 2 });
+        assert_eq!(restored.events, original.events);
     }
 }
