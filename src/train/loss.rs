@@ -95,6 +95,22 @@ pub fn contrastive_loss(
     denom.log().sub(&pos_logit)
 }
 
+/// Attention sparsity loss: the (scaled) Shannon entropy of the attention
+/// weights.
+///
+/// ```text
+/// L_sparse = λ · Σ_{i,j} -A[i,j]·log(A[i,j])
+/// ```
+///
+/// Minimizing entropy encourages each query to concentrate on a few source
+/// events rather than spreading attention uniformly, which aids causal
+/// attribution. A typical weight is `lambda = 0.01`.
+pub fn attention_sparsity_loss(attn: &Var, lambda: f32) -> Var {
+    let a = attn.clamp(EPS, 1.0);
+    // Σ -p·log(p), scaled by lambda.
+    a.mul(&a.log()).sum().mul_scalar(-lambda)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,5 +227,37 @@ mod tests {
             3e-3,
         );
         assert!(ok, "contrastive gradcheck failed, max rel err = {err}");
+    }
+
+    #[test]
+    fn test_sparsity_one_hot_is_zero() {
+        // One-hot rows have zero entropy.
+        let attn = Var::new(Tensor::new(vec![1.0, 0.0, 0.0, 1.0], vec![2, 2]), false);
+        let loss = attention_sparsity_loss(&attn, 1.0);
+        assert!(loss.tensor().data[0] < 1e-3, "one-hot entropy should be ~0");
+    }
+
+    #[test]
+    fn test_sparsity_uniform_is_max() {
+        // Two uniform rows of width 2: total entropy = 2·ln 2.
+        let attn = Var::new(Tensor::new(vec![0.5, 0.5, 0.5, 0.5], vec![2, 2]), false);
+        let loss = attention_sparsity_loss(&attn, 1.0);
+        assert!((loss.tensor().data[0] - 2.0 * 2.0_f32.ln()).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_sparsity_penalizes_uniform_more_than_peaked() {
+        let uniform = Var::new(Tensor::new(vec![0.5, 0.5], vec![1, 2]), false);
+        let peaked = Var::new(Tensor::new(vec![0.95, 0.05], vec![1, 2]), false);
+        let lu = attention_sparsity_loss(&uniform, 1.0).tensor().data[0];
+        let lp = attention_sparsity_loss(&peaked, 1.0).tensor().data[0];
+        assert!(lp < lu, "peaked attention {lp} should be penalized less than uniform {lu}");
+    }
+
+    #[test]
+    fn test_sparsity_gradient_numeric() {
+        let attn = Tensor::new(vec![0.3, 0.7, 0.6, 0.4], vec![2, 2]);
+        let (ok, err) = gradcheck(&|a: &Var| attention_sparsity_loss(a, 1.0), &attn, 1e-3, 2e-3);
+        assert!(ok, "sparsity gradcheck failed, max rel err = {err}");
     }
 }
