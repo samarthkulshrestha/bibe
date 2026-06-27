@@ -21,6 +21,9 @@ pub struct BibeConfig {
 pub struct ModelOutput {
     /// Per-position anomaly probabilities, shape `[batch, seq]`.
     pub anomaly_scores: Var,
+    /// Encoder hidden states, shape `[batch, seq, d_model]`. Exposed so the
+    /// trainer can pool a trace-level representation for the contrastive loss.
+    pub hidden: Var,
     /// Self-attention weights from each layer, shape `[batch*heads, seq, seq]`.
     pub attention_weights: Vec<Var>,
     /// Attention-rollout attribution, shape `[batch, seq, seq]`.
@@ -88,6 +91,7 @@ impl BibeModel {
 
         ModelOutput {
             anomaly_scores,
+            hidden,
             attention_weights,
             attribution,
         }
@@ -135,6 +139,15 @@ mod tests {
         assert_eq!(out.anomaly_scores.tensor().shape(), &[2, 6]);
         assert_eq!(out.attention_weights.len(), 3);
         assert_eq!(out.attribution.shape(), &[2, 6, 6]);
+    }
+
+    #[test]
+    fn test_hidden_states_exposed() {
+        let model = BibeModel::new(&tiny_config());
+        let (ids, aux) = sample_input(2, 6, 4);
+        let out = model.forward(&ids, &aux, 2, 6, false);
+        // [batch, seq, d_model]
+        assert_eq!(out.hidden.tensor().shape(), &[2, 6, 16]);
     }
 
     #[test]
