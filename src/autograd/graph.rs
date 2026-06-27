@@ -473,6 +473,23 @@ impl Var {
         )
     }
 
+    /// Select row `row` of a 2D tensor `[rows, cols]`, returning a `[cols]`
+    /// vector. The backward pass scatters the gradient back into that row.
+    pub fn select_row(&self, row: usize) -> Var {
+        let input = self.tensor();
+        let shape = input.shape();
+        assert_eq!(shape.len(), 2, "select_row expects a 2D tensor");
+        let (rows, cols) = (shape[0], shape[1]);
+        assert!(row < rows, "row {row} out of range for {rows} rows");
+
+        let data = input.data[row * cols..(row + 1) * cols].to_vec();
+        Var::from_op(
+            Tensor::new(data, vec![cols]),
+            Box::new(SelectRowBackward { rows, cols, row }),
+            vec![self.clone()],
+        )
+    }
+
     /// Clamp each element to the range `[min, max]`.
     ///
     /// The gradient flows through elements strictly inside the range and is
@@ -539,6 +556,29 @@ mod tests {
     }
 
     use crate::autograd::gradcheck::gradcheck;
+
+    #[test]
+    fn test_select_row_forward() {
+        let a = Var::new(Tensor::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]), false);
+        let r = a.select_row(1);
+        assert_eq!(r.tensor().shape(), &[2]);
+        approx_eq(&r.tensor().data, &[3.0, 4.0], 1e-6);
+    }
+
+    #[test]
+    fn test_select_row_backward_scatters_to_one_row() {
+        let a = Var::new(Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]), true);
+        let loss = a.select_row(1).sum();
+        loss.backward();
+        approx_eq(&a.grad().unwrap().data, &[0.0, 0.0, 1.0, 1.0, 0.0, 0.0], 1e-6);
+    }
+
+    #[test]
+    fn test_select_row_gradcheck() {
+        let x = Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+        let (ok, err) = gradcheck(&|v: &Var| v.select_row(2).pow(2.0).sum(), &x, 1e-3, 1e-3);
+        assert!(ok, "select_row gradcheck failed, max rel err = {err}");
+    }
 
     #[test]
     fn test_clamp_forward() {

@@ -201,6 +201,23 @@ impl GradFn for MeanDimBackward {
     }
 }
 
+// --- SelectRow: pick row `row` of a 2D tensor; scatter grad back to it ---
+
+pub(crate) struct SelectRowBackward {
+    pub rows: usize,
+    pub cols: usize,
+    pub row: usize,
+}
+
+impl GradFn for SelectRowBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        let mut data = vec![0.0f32; self.rows * self.cols];
+        let start = self.row * self.cols;
+        data[start..start + self.cols].copy_from_slice(&grad_output.data);
+        vec![Tensor::new(data, vec![self.rows, self.cols])]
+    }
+}
+
 // --- Clamp: gradient passes through inside (min, max), zero at/outside ---
 
 pub(crate) struct ClampBackward {
