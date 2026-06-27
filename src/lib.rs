@@ -5,3 +5,4 @@ pub mod attention;
 pub mod optim;
 pub mod transformer;
 pub mod model;
+pub mod train;
