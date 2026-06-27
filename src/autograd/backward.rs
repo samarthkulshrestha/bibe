@@ -201,6 +201,30 @@ impl GradFn for MeanDimBackward {
     }
 }
 
+// --- Embedding: gather rows by index; scatter-add gradients on backward ---
+// Each output row i was copied from weight row indices[i], so the gradient
+// for a weight row is the sum of grad_output rows that looked it up.
+
+pub(crate) struct EmbeddingBackward {
+    pub indices: Vec<usize>,
+    pub vocab_size: usize,
+    pub d_model: usize,
+}
+
+impl GradFn for EmbeddingBackward {
+    fn backward(&self, grad_output: &Tensor) -> Vec<Tensor> {
+        let mut grad_weight = vec![0.0f32; self.vocab_size * self.d_model];
+        for (i, &idx) in self.indices.iter().enumerate() {
+            let src = i * self.d_model;
+            let dst = idx * self.d_model;
+            for k in 0..self.d_model {
+                grad_weight[dst + k] += grad_output.data[src + k];
+            }
+        }
+        vec![Tensor::new(grad_weight, vec![self.vocab_size, self.d_model])]
+    }
+}
+
 // --- Matmul: dL/dA = dL/dC @ B^T, dL/dB = A^T @ dL/dC ---
 
 pub(crate) struct MatmulBackward {
