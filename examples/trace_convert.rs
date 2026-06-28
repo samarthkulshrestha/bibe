@@ -1,5 +1,5 @@
 //! Convert a captured function-call log + AddressSanitizer report into a BiBE
-//! trace (TSV). Part of Stage B (B0).
+//! trace (TSV). Part of the real-trace capture tooling under `instrumentation/`.
 //!
 //! ```text
 //! cargo run --example trace_convert -- <trace.log> <asan.txt> <out.trace>

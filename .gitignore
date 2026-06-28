@@ -1,4 +1,4 @@
 /target
 CLAUDE.md
 *.bin
-/stageb/out
+/instrumentation/out
