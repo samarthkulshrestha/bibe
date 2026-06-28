@@ -19,7 +19,9 @@ use bibe::autograd::Var;
 use bibe::data::{
     collate, extract_windows, parse_trace_file, DataLoader, Trace, Vocabulary, N_AUX,
 };
-use bibe::eval::{attribution_row, auc_roc, hit_at_k, mrr, rank_by_score_desc};
+use bibe::eval::{
+    attribution_row, auc_roc, head_averaged_query_row, hit_at_k, mrr, rank_by_score_desc,
+};
 use bibe::model::{BibeConfig, BibeModel};
 use bibe::train::{TrainConfig, Trainer};
 
@@ -107,7 +109,11 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     let mut all_scores = Vec::new();
     let mut all_labels = Vec::new();
     let (mut loc1, mut loc_mrr, mut n_anom) = (0usize, 0.0f32, 0usize);
-    let (mut att1, mut att3, mut att_mrr, mut n_att) = (0usize, 0usize, 0.0f32, 0usize);
+    // Attribution scored two ways: full rollout vs raw last-layer attention.
+    let (mut roll1, mut roll3, mut roll_mrr) = (0usize, 0usize, 0.0f32);
+    let (mut raw1, mut raw3, mut raw_mrr) = (0usize, 0usize, 0.0f32);
+    let mut n_att = 0usize;
+    let num_heads = model.num_heads();
 
     for trace in test {
         let windows = extract_windows(trace, WINDOW, WINDOW);
@@ -137,18 +143,30 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
             n_anom += 1;
         }
 
-        // Attribution: symptom -> cause via rollout, when the cause is distinct.
+        // Attribution: symptom -> cause, when the cause is distinct. Rank the
+        // candidate sources by rollout and by raw last-layer attention.
         if let (Some(crash), Some(cause)) = (trace.root_cause(), trace.cause())
             && cause != crash
         {
-            let row = attribution_row(&out.attribution, 0, crash);
-            let mut ranked: Vec<usize> = (0..batch.seq)
+            let candidates: Vec<usize> = (0..batch.seq)
                 .filter(|&s| batch.pad_mask.data[s] > 0.5 && s != crash)
                 .collect();
-            ranked.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
-            att1 += hit_at_k(&ranked, cause, 1) as usize;
-            att3 += hit_at_k(&ranked, cause, 3) as usize;
-            att_mrr += mrr(&ranked, cause);
+            let rank_by = |row: &[f32]| {
+                let mut c = candidates.clone();
+                c.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
+                c
+            };
+
+            let rollout = rank_by(&attribution_row(&out.attribution, 0, crash));
+            let last = out.attention_weights.last().unwrap().tensor();
+            let raw = rank_by(&head_averaged_query_row(&last, num_heads, 0, crash));
+
+            roll1 += hit_at_k(&rollout, cause, 1) as usize;
+            roll3 += hit_at_k(&rollout, cause, 3) as usize;
+            roll_mrr += mrr(&rollout, cause);
+            raw1 += hit_at_k(&raw, cause, 1) as usize;
+            raw3 += hit_at_k(&raw, cause, 3) as usize;
+            raw_mrr += mrr(&raw, cause);
             n_att += 1;
         }
     }
@@ -161,8 +179,15 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         println!("  localize    MRR       {:.3}   ({n_anom} anomalous)", loc_mrr / n_anom as f32);
     }
     if n_att > 0 {
-        println!("  attribute   Hit@1     {:.3}", att1 as f32 / n_att as f32);
-        println!("  attribute   Hit@3     {:.3}", att3 as f32 / n_att as f32);
-        println!("  attribute   MRR       {:.3}   ({n_att} use-after-free)", att_mrr / n_att as f32);
+        let n = n_att as f32;
+        println!("  attribution over {n_att} use-after-free (cause among decoy frees):");
+        println!(
+            "    rollout    Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}",
+            roll1 as f32 / n, roll3 as f32 / n, roll_mrr / n
+        );
+        println!(
+            "    raw attn   Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}",
+            raw1 as f32 / n, raw3 as f32 / n, raw_mrr / n
+        );
     }
 }
