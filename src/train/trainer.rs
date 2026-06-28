@@ -5,7 +5,9 @@ use crate::data::Vocabulary;
 use crate::model::BibeModel;
 use crate::optim::{clip_grad_norm, lr_at, Adam};
 use crate::train::loss::attention_sparsity_loss;
-use crate::train::objective::{batch_contrastive_loss, masked_focal_loss, masked_mean_pool};
+use crate::train::objective::{
+    attribution_supervision_loss, batch_contrastive_loss, masked_focal_loss, masked_mean_pool,
+};
 
 /// Training hyperparameters.
 pub struct TrainConfig {
@@ -18,6 +20,8 @@ pub struct TrainConfig {
     pub sparsity_lambda: f32,
     pub contrastive_lambda: f32,
     pub contrastive_temp: f32,
+    /// Weight on the attention attribution-supervision loss.
+    pub attribution_lambda: f32,
 }
 
 impl Default for TrainConfig {
@@ -32,6 +36,7 @@ impl Default for TrainConfig {
             sparsity_lambda: 0.01,
             contrastive_lambda: 1.0,
             contrastive_temp: 0.07,
+            attribution_lambda: 0.0,
         }
     }
 }
@@ -101,6 +106,19 @@ impl Trainer {
             loss = loss.add(&c.mul_scalar(self.config.contrastive_lambda));
         }
 
+        // Attribution supervision: steer the symptom's attention to the cause,
+        // but only where the cause is a distinct event.
+        if self.config.attribution_lambda > 0.0 {
+            let supervised = supervised_triples(batch);
+            if let Some(a) = attribution_supervision_loss(
+                &out.attention_weights,
+                &supervised,
+                self.model.num_heads(),
+            ) {
+                loss = loss.add(&a.mul_scalar(self.config.attribution_lambda));
+            }
+        }
+
         let loss_val = loss.tensor().data[0];
 
         self.optimizer.zero_grad();
@@ -130,6 +148,29 @@ fn window_anomaly_flags(batch: &Batch) -> Vec<bool> {
     (0..batch.batch)
         .map(|b| {
             (0..batch.seq).any(|s| batch.labels.data[b * batch.seq + s] > 0.5)
+        })
+        .collect()
+}
+
+/// `(window, symptom, cause)` triples for windows whose cause is a distinct
+/// event from the symptom — the only ones worth supervising attention on.
+fn supervised_triples(batch: &Batch) -> Vec<(usize, usize, usize)> {
+    let argmax = |row: &[f32]| {
+        row.iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(i, _)| i)
+            .unwrap_or(0)
+    };
+    (0..batch.batch)
+        .filter_map(|b| {
+            let span = b * batch.seq..(b + 1) * batch.seq;
+            let labels = &batch.labels.data[span.clone()];
+            let cause = &batch.cause.data[span];
+            let symptom = argmax(labels);
+            let cause_pos = argmax(cause);
+            let anomalous = labels[symptom] > 0.5 && cause[cause_pos] > 0.5;
+            (anomalous && symptom != cause_pos).then_some((b, symptom, cause_pos))
         })
         .collect()
 }
@@ -213,6 +254,33 @@ mod tests {
             last = trainer.train_step(&batch).loss;
         }
         assert!(last < first * 0.7, "loss did not fall enough: {first} -> {last}");
+    }
+
+    #[test]
+    fn test_train_step_with_attribution_supervision() {
+        // A window with a distinct cause exercises the attribution-supervision
+        // path; the step must still produce a finite loss.
+        let trace = Trace {
+            events: vec![event("a", 0), event("free", 5), event("c", 0), event("use", 9)],
+            label: TraceLabel::Anomalous { root_cause: 3, cause: 1 },
+        };
+        let vocab = crate::data::Vocabulary::build(&[trace.clone()], 1);
+        let windows = extract_windows(&trace, 4, 4);
+        let batch = collate(&windows, &vocab);
+        let config = BibeConfig {
+            vocab_size: vocab.len(),
+            d_model: 16,
+            num_heads: 2,
+            d_ff: 32,
+            num_layers: 2,
+            n_aux: N_AUX,
+            max_len: 16,
+            dropout_p: 0.0,
+        };
+        let cfg = TrainConfig { attribution_lambda: 0.5, ..TrainConfig::default() };
+        let mut trainer = Trainer::new(BibeModel::new(&config), cfg);
+        let stats = trainer.train_step(&batch);
+        assert!(stats.loss.is_finite(), "loss not finite with attribution supervision");
     }
 
     #[test]

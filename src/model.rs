@@ -97,6 +97,11 @@ impl BibeModel {
         }
     }
 
+    /// Number of attention heads per layer.
+    pub fn num_heads(&self) -> usize {
+        self.num_heads
+    }
+
     /// Collect all trainable parameters for the optimizer.
     pub fn parameters(&self) -> Vec<Var> {
         let mut params = self.embedding.parameters();
