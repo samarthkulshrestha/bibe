@@ -14,8 +14,8 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
 use bibe::autograd::Var;
-use bibe::data::{collate, extract_windows, DataLoader, TraceGenerator, Vocabulary, N_AUX};
-use bibe::eval::{auc_roc, hit_at_k, mrr, precision_at_k, rank_by_score_desc};
+use bibe::data::{collate, extract_windows, BugKind, DataLoader, TraceGenerator, Vocabulary, N_AUX};
+use bibe::eval::{attribution_row, auc_roc, hit_at_k, mrr, precision_at_k, rank_by_score_desc};
 use bibe::model::{BibeConfig, BibeModel};
 use bibe::train::{save_parameters, TrainConfig, Trainer};
 
@@ -90,10 +90,59 @@ fn main() {
     let eval_set = TraceGenerator::new(99).dataset(20, 20);
     evaluate(trainer.model(), &vocab, &eval_set);
 
+    // 6b. Attribution: does attention rollout link the crash back to its cause?
+    attribution_experiment(trainer.model(), &vocab);
+
     // 7. Checkpoint.
     let path = std::path::Path::new("bibe_checkpoint.bin");
     save_parameters(path, &trainer.model().parameters()).expect("failed to save checkpoint");
     println!("saved checkpoint to {}", path.display());
+}
+
+/// Attribution gut-check: for use-after-free traces, treat the crash event as
+/// the query and rank the *other* events by attention-rollout influence. Does
+/// the causal `free` event surface near the top? Compared against the random
+/// baseline (1 / number of candidate events).
+fn attribution_experiment(model: &BibeModel, vocab: &Vocabulary) {
+    let mut generator = TraceGenerator::new(777);
+    let (mut hit1, mut hit3, mut mrr_sum, mut count, mut cand_total) = (0, 0, 0.0, 0, 0);
+
+    for _ in 0..40 {
+        let trace = generator.anomalous_trace(BugKind::UseAfterFree);
+        let crash = trace.root_cause().unwrap();
+        let free_idx = match trace.events[..crash].iter().position(|e| e.function == "free") {
+            Some(i) => i,
+            None => continue,
+        };
+
+        let windows = extract_windows(&trace, WINDOW, WINDOW);
+        let batch = collate(&windows[..1], vocab);
+        let aux = Var::new(batch.aux.clone(), false);
+        let out = model.forward(&batch.function_ids, &aux, 1, batch.seq, false);
+
+        // Rank real source events (excluding the crash itself) by how much the
+        // crash event attributes to them through the rollout.
+        let row = attribution_row(&out.attribution, 0, crash);
+        let mut ranked: Vec<usize> = (0..batch.seq)
+            .filter(|&s| batch.pad_mask.data[s] > 0.5 && s != crash)
+            .collect();
+        ranked.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
+
+        cand_total += ranked.len();
+        hit1 += hit_at_k(&ranked, free_idx, 1) as usize;
+        hit3 += hit_at_k(&ranked, free_idx, 3) as usize;
+        mrr_sum += mrr(&ranked, free_idx);
+        count += 1;
+    }
+
+    if count == 0 {
+        return;
+    }
+    let avg_cands = cand_total as f32 / count as f32;
+    println!("\nattribution: crash -> free over {count} use-after-free traces:");
+    println!("  Hit@1   {:.3}   (random ~ {:.3})", hit1 as f32 / count as f32, 1.0 / avg_cands);
+    println!("  Hit@3   {:.3}   (random ~ {:.3})", hit3 as f32 / count as f32, 3.0 / avg_cands);
+    println!("  MRR     {:.3}", mrr_sum / count as f32);
 }
 
 /// Run the model over held-out traces and report detection and localization
