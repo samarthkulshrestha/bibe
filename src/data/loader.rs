@@ -17,6 +17,8 @@ pub struct Batch {
     pub function_ids: Vec<usize>,
     pub aux: Tensor,
     pub labels: Tensor,
+    /// Per-position causal-event labels `[batch, seq]` (1.0 at the cause).
+    pub cause: Tensor,
     pub pad_mask: Tensor,
     pub batch: usize,
     pub seq: usize,
@@ -30,6 +32,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
     let mut function_ids = Vec::with_capacity(batch * seq);
     let mut aux = Vec::with_capacity(batch * seq * N_AUX);
     let mut labels = Vec::with_capacity(batch * seq);
+    let mut cause = Vec::with_capacity(batch * seq);
     let mut mask = Vec::with_capacity(batch * seq);
 
     for w in windows {
@@ -37,6 +40,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
             function_ids.push(vocab.encode(&ev.function));
             aux.extend_from_slice(&aux_features(ev));
             labels.push(w.labels[i]);
+            cause.push(w.cause_labels[i]);
             mask.push(if w.pad_mask[i] { 1.0 } else { 0.0 });
         }
     }
@@ -45,6 +49,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
         function_ids,
         aux: Tensor::new(aux, vec![batch, seq, N_AUX]),
         labels: Tensor::new(labels, vec![batch, seq]),
+        cause: Tensor::new(cause, vec![batch, seq]),
         pad_mask: Tensor::new(mask, vec![batch, seq]),
         batch,
         seq,
@@ -117,7 +122,7 @@ mod tests {
     fn corpus() -> (Vec<TraceWindow>, Vocabulary) {
         let trace = Trace {
             events: vec![event("malloc", 1), event("free", 2), event("use", 3)],
-            label: TraceLabel::Anomalous { root_cause: 2, cause: 2 },
+            label: TraceLabel::Anomalous { root_cause: 2, cause: 0 },
         };
         let windows = extract_windows(&trace, 4, 4); // one padded window of length 4
         let vocab = Vocabulary::build(&[trace], 1);
@@ -154,6 +159,16 @@ mod tests {
         assert_eq!(b.labels.data, vec![0.0, 0.0, 1.0, 0.0]);
         // first three real, last padded.
         assert_eq!(b.pad_mask.data, vec![1.0, 1.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn test_collate_cause_channel() {
+        let (windows, vocab) = corpus();
+        let b = collate(&windows, &vocab);
+        // Cause at index 0 (distinct from the symptom at index 2).
+        assert_eq!(b.cause.shape(), &[1, 4]);
+        assert_eq!(b.cause.data, vec![1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(b.labels.data, vec![0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]

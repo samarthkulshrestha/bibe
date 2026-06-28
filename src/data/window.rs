@@ -9,8 +9,10 @@ use super::vocab::PAD_TOKEN;
 #[derive(Debug, Clone)]
 pub struct TraceWindow {
     pub events: Vec<TraceEvent>,
-    /// Per-position anomaly label: 1.0 at the root-cause event, else 0.0.
+    /// Per-position anomaly label: 1.0 at the symptom (root-cause) event.
     pub labels: Vec<f32>,
+    /// Per-position cause label: 1.0 at the causal event (attribution target).
+    pub cause_labels: Vec<f32>,
     /// true for real events, false for padding.
     pub pad_mask: Vec<bool>,
 }
@@ -40,12 +42,14 @@ pub fn extract_windows(trace: &Trace, window_size: usize, stride: usize) -> Vec<
     }
 
     let root_cause = trace.root_cause();
+    let cause = trace.cause();
     let mut windows = Vec::new();
 
     let mut start = 0;
     while start < len {
         let mut events = Vec::with_capacity(window_size);
         let mut labels = Vec::with_capacity(window_size);
+        let mut cause_labels = Vec::with_capacity(window_size);
         let mut pad_mask = Vec::with_capacity(window_size);
 
         for p in 0..window_size {
@@ -53,15 +57,17 @@ pub fn extract_windows(trace: &Trace, window_size: usize, stride: usize) -> Vec<
             if idx < len {
                 events.push(trace.events[idx].clone());
                 labels.push(if root_cause == Some(idx) { 1.0 } else { 0.0 });
+                cause_labels.push(if cause == Some(idx) { 1.0 } else { 0.0 });
                 pad_mask.push(true);
             } else {
                 events.push(pad_event());
                 labels.push(0.0);
+                cause_labels.push(0.0);
                 pad_mask.push(false);
             }
         }
 
-        windows.push(TraceWindow { events, labels, pad_mask });
+        windows.push(TraceWindow { events, labels, cause_labels, pad_mask });
         start += stride;
     }
 
@@ -121,6 +127,20 @@ mod tests {
     fn test_root_cause_label_inside_window() {
         let w = extract_windows(&trace(4, TraceLabel::Anomalous { root_cause: 2, cause: 2 }), 4, 4);
         assert_eq!(w[0].labels, vec![0.0, 0.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn test_distinct_cause_label_inside_window() {
+        // Symptom at 3, cause at 1 -> separate one-hot channels.
+        let w = extract_windows(&trace(4, TraceLabel::Anomalous { root_cause: 3, cause: 1 }), 4, 4);
+        assert_eq!(w[0].labels, vec![0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(w[0].cause_labels, vec![0.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_normal_window_has_no_cause_label() {
+        let w = extract_windows(&trace(3, TraceLabel::Normal), 4, 4);
+        assert_eq!(w[0].cause_labels, vec![0.0; 4]);
     }
 
     #[test]
