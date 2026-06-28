@@ -34,11 +34,24 @@ It then uses a custom-built transformer model to:
 
 ## Current Status
 
-This project is in early development. The current focus is building the foundational components from scratch:
-- Linear algebra and matrix operations
-- Automatic differentiation (autograd) system
-- Numerically stable attention mechanisms
-- Training infrastructure
+The full system is implemented from scratch in Rust and trains end-to-end. What works today:
+
+- **Numerical core**: dense tensors, broadcasting, matmul, numerically stable softmax/log-sum-exp.
+- **Autograd**: reverse-mode automatic differentiation with finite-difference gradient checks on every operation.
+- **Model**: multi-head bidirectional attention, pre-LayerNorm transformer blocks, embeddings, sinusoidal positional encodings, a per-event anomaly head, and attention-rollout attribution.
+- **Training**: Adam, warmup + cosine learning-rate schedule, gradient clipping, focal / contrastive / attention-sparsity / attribution-supervision losses, and parameter checkpointing.
+- **Data**: a trace format with parser/serializer, vocabulary, sliding windows, batching, a synthetic trace generator, and a **real-trace capture pipeline** (instrument C programs, run them, and label bugs automatically with AddressSanitizer).
+- **Evaluation**: AUC-ROC, Precision@K, Hit@K, MRR for detection, localization, and attribution.
+
+### Results so far (honest)
+
+On a **real** corpus — C programs compiled with AddressSanitizer + function instrumentation, executed, and auto-labeled — where clean and buggy programs share the same set of `free`/`use` calls (so only execution *order* differs) and contain decoy frees:
+
+- **Detection** (is there a use-after-free?): AUC-ROC ≈ 0.997
+- **Localization** (which event is the symptom?): Hit@1 ≈ 0.96
+- **Attribution** (which earlier `free` caused it, among decoys?): the true cause is always in the top 3 (Hit@3 = 1.0), but the exact culprit is ranked first only ~46% of the time.
+
+Detection and localization are strong; **pinpointing the exact root cause among decoys is the current research frontier.** The traces are real executions, but of small templated programs — generalization to real applications is future work.
 
 ## Why Build From Scratch?
 
@@ -54,23 +67,40 @@ Rather than using existing ML frameworks (PyTorch, TensorFlow), BiBE is implemen
 - Rust toolchain (edition 2024 or later)
 - Cargo package manager
 
-### Build and Run
+### Build and Test
 ```bash
-# Build the project
 cargo build
-
-# Run tests
-cargo test
-
-# Run the project
-cargo run
+cargo test          # ~430 tests, including finite-difference gradient checks
 ```
+
+### Run the experiments
+```bash
+# Train on synthetic traces and report detection/localization/attribution
+cargo run --release --example train
+
+# Leave-one-out generalization study + contrastive-weight sweep
+cargo run --release --example ood_study
+
+# Capture REAL traces: instrument C programs, run them, label with ASan
+cargo run --example corpus_gen -- 240 instrumentation/out/corpus 99
+sh instrumentation/capture_corpus.sh instrumentation/out/corpus instrumentation/out/traces
+
+# Train and evaluate on the real captured traces
+cargo run --release --example train_real -- instrumentation/out/traces
+```
+(AddressSanitizer requires a `clang` toolchain.)
 
 ## Project Structure
 
-- `src/` - Source code
-- `PLAN.md` - Detailed technical design document
-- `CLAUDE.md` - Developer documentation for AI assistants
+- `src/tensor`, `src/autograd` - numerical core and automatic differentiation
+- `src/nn`, `src/attention`, `src/transformer` - model layers and the encoder
+- `src/data` - trace format, vocabulary, windowing, batching, synthetic generator
+- `src/optim`, `src/train` - optimizer, schedule, losses, training loop, checkpoints
+- `src/eval` - detection and attribution metrics
+- `src/model.rs` - the assembled BiBE model
+- `examples/` - runnable training, study, and capture-conversion programs
+- `instrumentation/` - C instrumentation shim, sample programs, capture scripts
+- `PLAN.md` - technical design document
 
 ## Goals
 
