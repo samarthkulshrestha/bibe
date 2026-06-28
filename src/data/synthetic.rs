@@ -92,7 +92,7 @@ impl TraceGenerator {
             events[free_idx].function = "free".to_string();
         }
 
-        Trace { events, label: TraceLabel::Anomalous { root_cause } }
+        Trace { events, label: TraceLabel::Anomalous { root_cause, cause: root_cause } }
     }
 
     /// Generate a labeled dataset: `n_normal` clean traces followed by

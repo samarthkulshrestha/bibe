@@ -45,14 +45,25 @@ fn parse_label(spec: &str, lineno: usize) -> Result<TraceLabel, String> {
     match parts.next() {
         Some("normal") => Ok(TraceLabel::Normal),
         Some("anomalous") => {
-            let rc = parts
-                .next()
-                .and_then(|kv| kv.strip_prefix("root_cause="))
+            let mut root_cause: Option<usize> = None;
+            let mut cause: Option<usize> = None;
+            for tok in parts {
+                if let Some(v) = tok.strip_prefix("root_cause=") {
+                    root_cause = Some(
+                        v.parse()
+                            .map_err(|e| format!("line {lineno}: bad root_cause '{v}': {e}"))?,
+                    );
+                } else if let Some(v) = tok.strip_prefix("cause=") {
+                    cause = Some(
+                        v.parse()
+                            .map_err(|e| format!("line {lineno}: bad cause '{v}': {e}"))?,
+                    );
+                }
+            }
+            let root_cause = root_cause
                 .ok_or_else(|| format!("line {lineno}: anomalous label needs root_cause="))?;
-            let root_cause = rc
-                .parse::<usize>()
-                .map_err(|e| format!("line {lineno}: bad root_cause '{rc}': {e}"))?;
-            Ok(TraceLabel::Anomalous { root_cause })
+            // Default the cause to the root cause for single-event anomalies.
+            Ok(TraceLabel::Anomalous { root_cause, cause: cause.unwrap_or(root_cause) })
         }
         other => Err(format!("line {lineno}: unknown label '{other:?}'")),
     }
@@ -98,8 +109,8 @@ pub fn serialize_trace(trace: &Trace) -> String {
     let mut out = String::new();
     match trace.label {
         TraceLabel::Normal => out.push_str("# label=normal\n"),
-        TraceLabel::Anomalous { root_cause } => {
-            out.push_str(&format!("# label=anomalous root_cause={root_cause}\n"));
+        TraceLabel::Anomalous { root_cause, cause } => {
+            out.push_str(&format!("# label=anomalous root_cause={root_cause} cause={cause}\n"));
         }
     }
     out.push_str("# function timestamp depth l1 l2 llc branch\n");
@@ -161,9 +172,17 @@ use 1020 1 5 2 1 3
     #[test]
     fn test_parse_anomalous_trace_with_root_cause() {
         let t = parse_trace(ANOMALOUS).unwrap();
-        assert_eq!(t.label, TraceLabel::Anomalous { root_cause: 2 });
+        // No explicit cause -> defaults to the root cause.
+        assert_eq!(t.label, TraceLabel::Anomalous { root_cause: 2, cause: 2 });
         assert_eq!(t.len(), 3);
         assert_eq!(t.events[2].function, "use");
+    }
+
+    #[test]
+    fn test_parse_explicit_cause() {
+        let text = "# label=anomalous root_cause=2 cause=0\nf 0 0 0 0 0 0\ng 1 0 0 0 0 0\nh 2 0 0 0 0 0\n";
+        let t = parse_trace(text).unwrap();
+        assert_eq!(t.label, TraceLabel::Anomalous { root_cause: 2, cause: 0 });
     }
 
     #[test]
@@ -209,7 +228,7 @@ use 1020 1 5 2 1 3
     fn test_serialize_round_trips_anomalous() {
         let original = parse_trace(ANOMALOUS).unwrap();
         let restored = parse_trace(&serialize_trace(&original)).unwrap();
-        assert_eq!(restored.label, TraceLabel::Anomalous { root_cause: 2 });
+        assert_eq!(restored.label, TraceLabel::Anomalous { root_cause: 2, cause: 2 });
         assert_eq!(restored.events, original.events);
     }
 }

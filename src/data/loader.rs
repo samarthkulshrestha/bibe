@@ -117,7 +117,7 @@ mod tests {
     fn corpus() -> (Vec<TraceWindow>, Vocabulary) {
         let trace = Trace {
             events: vec![event("malloc", 1), event("free", 2), event("use", 3)],
-            label: TraceLabel::Anomalous { root_cause: 2 },
+            label: TraceLabel::Anomalous { root_cause: 2, cause: 2 },
         };
         let windows = extract_windows(&trace, 4, 4); // one padded window of length 4
         let vocab = Vocabulary::build(&[trace], 1);

@@ -164,7 +164,7 @@ mod tests {
         };
         let anomalous = Trace {
             events: vec![event("a", 0), event("x", 9), event("c", 0), event("d", 0)],
-            label: TraceLabel::Anomalous { root_cause: 1 },
+            label: TraceLabel::Anomalous { root_cause: 1, cause: 1 },
         };
         let vocab = crate::data::Vocabulary::build(&[normal.clone(), anomalous.clone()], 1);
         let mut windows = extract_windows(&normal, 4, 4);

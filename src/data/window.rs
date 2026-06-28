@@ -119,14 +119,14 @@ mod tests {
 
     #[test]
     fn test_root_cause_label_inside_window() {
-        let w = extract_windows(&trace(4, TraceLabel::Anomalous { root_cause: 2 }), 4, 4);
+        let w = extract_windows(&trace(4, TraceLabel::Anomalous { root_cause: 2, cause: 2 }), 4, 4);
         assert_eq!(w[0].labels, vec![0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]
     fn test_root_cause_outside_window_is_unlabeled() {
         // root cause at global index 5; first window covers 0..4 only.
-        let w = extract_windows(&trace(10, TraceLabel::Anomalous { root_cause: 5 }), 4, 4);
+        let w = extract_windows(&trace(10, TraceLabel::Anomalous { root_cause: 5, cause: 5 }), 4, 4);
         assert_eq!(w[0].labels, vec![0.0; 4]);
         // Second window covers events 4..8, so local index 1 (global 5) is set.
         assert_eq!(w[1].labels, vec![0.0, 1.0, 0.0, 0.0]);

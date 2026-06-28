@@ -14,12 +14,16 @@ pub struct TraceEvent {
     pub branch_misses: u32,
 }
 
-/// Trace-level label: either a clean run or an anomalous one with the
-/// known root-cause event index.
+/// Trace-level label: either a clean run or an anomalous one.
+///
+/// `root_cause` is where the anomaly manifests (the symptom/crash the detector
+/// should flag). `cause` is the upstream event the attribution should point to
+/// — distinct from `root_cause` for bugs like use-after-free (where the cause
+/// is the earlier `free`), and equal to it for single-event anomalies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceLabel {
     Normal,
-    Anomalous { root_cause: usize },
+    Anomalous { root_cause: usize, cause: usize },
 }
 
 /// A full execution trace: an ordered sequence of events plus its label.
@@ -45,10 +49,18 @@ impl Trace {
         matches!(self.label, TraceLabel::Anomalous { .. })
     }
 
-    /// The root-cause event index, if the trace is anomalous.
+    /// The anomaly (symptom) event index, if the trace is anomalous.
     pub fn root_cause(&self) -> Option<usize> {
         match self.label {
-            TraceLabel::Anomalous { root_cause } => Some(root_cause),
+            TraceLabel::Anomalous { root_cause, .. } => Some(root_cause),
+            TraceLabel::Normal => None,
+        }
+    }
+
+    /// The causal (attribution-target) event index, if the trace is anomalous.
+    pub fn cause(&self) -> Option<usize> {
+        match self.label {
+            TraceLabel::Anomalous { cause, .. } => Some(cause),
             TraceLabel::Normal => None,
         }
     }
@@ -85,12 +97,19 @@ mod tests {
     }
 
     #[test]
-    fn test_anomalous_trace_exposes_root_cause() {
+    fn test_anomalous_trace_exposes_root_cause_and_cause() {
         let t = Trace {
-            events: vec![ev("a"), ev("b")],
-            label: TraceLabel::Anomalous { root_cause: 1 },
+            events: vec![ev("a"), ev("b"), ev("c")],
+            label: TraceLabel::Anomalous { root_cause: 2, cause: 0 },
         };
         assert!(t.is_anomalous());
-        assert_eq!(t.root_cause(), Some(1));
+        assert_eq!(t.root_cause(), Some(2));
+        assert_eq!(t.cause(), Some(0));
+    }
+
+    #[test]
+    fn test_normal_trace_has_no_cause() {
+        let t = Trace { events: vec![ev("a")], label: TraceLabel::Normal };
+        assert_eq!(t.cause(), None);
     }
 }
