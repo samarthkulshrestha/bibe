@@ -82,31 +82,57 @@ impl TraceGenerator {
         let len = self.rng.random_range(self.config.min_len..=self.config.max_len);
         let mut events: Vec<TraceEvent> = (0..len).map(|i| self.normal_event(i)).collect();
 
-        // Root cause sits away from the very start so precursors have room.
+        // The symptom sits away from the very start so a cause has room before it.
         let root_cause = self.rng.random_range(3..len);
         events[root_cause] = self.bug_event(kind, root_cause);
 
-        if kind == BugKind::UseAfterFree {
-            // A `free` a few events before the freed-memory access.
+        // For use-after-free the cause (the `free`) is a distinct, earlier
+        // event carrying its own learnable signature; other bugs are
+        // single-event, so cause and symptom coincide.
+        let cause = if kind == BugKind::UseAfterFree {
             let free_idx = root_cause - 2;
-            events[free_idx].function = "free".to_string();
-        }
+            events[free_idx] = self.free_event(free_idx);
+            free_idx
+        } else {
+            root_cause
+        };
 
-        Trace { events, label: TraceLabel::Anomalous { root_cause, cause: root_cause } }
+        Trace { events, label: TraceLabel::Anomalous { root_cause, cause } }
     }
 
     /// Generate a labeled dataset: `n_normal` clean traces followed by
-    /// `n_anomalous` buggy traces cycling through the bug kinds.
+    /// `n_anomalous` buggy traces cycling through every bug kind.
     pub fn dataset(&mut self, n_normal: usize, n_anomalous: usize) -> Vec<Trace> {
+        self.dataset_with_kinds(n_normal, n_anomalous, &BugKind::ALL)
+    }
+
+    /// Like [`dataset`](Self::dataset) but cycling only the given bug kinds,
+    /// for building out-of-distribution train/test splits.
+    pub fn dataset_with_kinds(
+        &mut self,
+        n_normal: usize,
+        n_anomalous: usize,
+        kinds: &[BugKind],
+    ) -> Vec<Trace> {
+        assert!(!kinds.is_empty(), "need at least one bug kind");
         let mut traces = Vec::with_capacity(n_normal + n_anomalous);
         for _ in 0..n_normal {
             traces.push(self.normal_trace());
         }
         for i in 0..n_anomalous {
-            let kind = BugKind::ALL[i % BugKind::ALL.len()];
-            traces.push(self.anomalous_trace(kind));
+            traces.push(self.anomalous_trace(kinds[i % kinds.len()]));
         }
         traces
+    }
+
+    /// The causal `free` event: a deallocation signature distinct from both
+    /// normal noise and the crash spike, so attribution has something to learn.
+    fn free_event(&mut self, index: usize) -> TraceEvent {
+        let mut e = self.normal_event(index);
+        e.function = "free".to_string();
+        e.llc_misses = self.rng.random_range(15..35);
+        e.l2_misses = self.rng.random_range(10..25);
+        e
     }
 
     /// A typical low-noise event from the normal function pool.
@@ -200,6 +226,38 @@ mod tests {
             t.events[..rc].iter().any(|e| e.function == "free"),
             "use-after-free should have a free precursor"
         );
+    }
+
+    #[test]
+    fn test_use_after_free_cause_is_the_free() {
+        let mut g = TraceGenerator::new(8);
+        let t = g.anomalous_trace(BugKind::UseAfterFree);
+        let symptom = t.root_cause().unwrap();
+        let cause = t.cause().unwrap();
+        assert_ne!(cause, symptom, "cause should differ from the symptom");
+        assert_eq!(t.events[cause].function, "free");
+        // The free carries a learnable signature, not just a name.
+        assert!(t.events[cause].llc_misses > 10);
+    }
+
+    #[test]
+    fn test_single_event_bug_cause_equals_symptom() {
+        let mut g = TraceGenerator::new(8);
+        for kind in [BugKind::Deadlock, BugKind::MemoryLeak, BugKind::PerfRegression] {
+            let t = g.anomalous_trace(kind);
+            assert_eq!(t.root_cause(), t.cause(), "{kind:?} is single-event");
+        }
+    }
+
+    #[test]
+    fn test_dataset_with_kinds_restricts_kinds() {
+        let mut g = TraceGenerator::new(6);
+        let ds = g.dataset_with_kinds(0, 5, &[BugKind::PerfRegression]);
+        assert_eq!(ds.len(), 5);
+        for t in &ds {
+            let rc = t.root_cause().unwrap();
+            assert_eq!(t.events[rc].function, "hot_loop");
+        }
     }
 
     #[test]
