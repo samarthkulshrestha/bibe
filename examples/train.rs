@@ -22,6 +22,7 @@ use bibe::train::{save_parameters, TrainConfig, Trainer};
 const WINDOW: usize = 64;
 const BATCH_SIZE: usize = 8;
 const EPOCHS: usize = 20;
+const SEED: u64 = 1234;
 
 fn main() {
     // 1. Generate a deterministic labeled dataset.
@@ -47,7 +48,8 @@ fn main() {
     let loader = DataLoader::new(windows, BATCH_SIZE);
     let steps_per_epoch = loader.num_batches();
 
-    // 4. Build the model.
+    // 4. Build the model (seed weight init for reproducible runs).
+    bibe::seed(SEED);
     let config = BibeConfig {
         vocab_size: vocab.len(),
         d_model: 64,
