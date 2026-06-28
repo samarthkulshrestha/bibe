@@ -31,20 +31,24 @@ fn main() {
     // generalization and the effect of the contrastive weight.
     let lambdas = [0.0, 1.0, 4.0, 8.0];
 
+    println!("(ID = unseen traces of the trained kinds; OOD = the held-out kind)\n");
+    let n = BugKind::ALL.len() as f32;
     for &contrastive_lambda in &lambdas {
         println!("contrastive_lambda = {contrastive_lambda}");
-        let mut sum = 0.0;
+        let (mut id_sum, mut ood_sum) = (0.0, 0.0);
         for &held_out in &BugKind::ALL {
-            let auc = leave_one_out(held_out, contrastive_lambda);
-            println!("  held-out {:<16} AUC {auc:.3}", format!("{held_out:?}"));
-            sum += auc;
+            let (id, ood) = leave_one_out(held_out, contrastive_lambda);
+            println!("  held-out {:<16} ID {id:.3}   OOD {ood:.3}", format!("{held_out:?}"));
+            id_sum += id;
+            ood_sum += ood;
         }
-        println!("  mean OOD AUC: {:.3}\n", sum / BugKind::ALL.len() as f32);
+        println!("  mean   ID {:.3}   OOD {:.3}\n", id_sum / n, ood_sum / n);
     }
 }
 
-/// Train without `held_out`, then measure detection AUC on it.
-fn leave_one_out(held_out: BugKind, contrastive_lambda: f32) -> f32 {
+/// Train without `held_out`; return (in-distribution AUC on unseen traces of
+/// the trained kinds, out-of-distribution AUC on the held-out kind).
+fn leave_one_out(held_out: BugKind, contrastive_lambda: f32) -> (f32, f32) {
     let train_kinds: Vec<BugKind> =
         BugKind::ALL.iter().copied().filter(|&k| k != held_out).collect();
 
@@ -52,8 +56,13 @@ fn leave_one_out(held_out: BugKind, contrastive_lambda: f32) -> f32 {
     let vocab = Vocabulary::build(&train_set, 1);
     let trainer = train_on(&train_set, &vocab, contrastive_lambda);
 
-    let eval_set = TraceGenerator::new(57).dataset_with_kinds(0, 20, &[held_out]);
-    detection_auc(trainer.model(), &vocab, &eval_set)
+    // In-distribution: fresh traces of the trained kinds (different seed).
+    let id_set = TraceGenerator::new(71).dataset_with_kinds(20, 20, &train_kinds);
+    let id = detection_auc(trainer.model(), &vocab, &id_set);
+    // Out-of-distribution: the held-out kind.
+    let ood_set = TraceGenerator::new(57).dataset_with_kinds(0, 20, &[held_out]);
+    let ood = detection_auc(trainer.model(), &vocab, &ood_set);
+    (id, ood)
 }
 
 fn train_on(dataset: &[Trace], vocab: &Vocabulary, contrastive_lambda: f32) -> Trainer {
