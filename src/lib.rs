@@ -1,5 +1,8 @@
+pub mod rng;
 pub mod tensor;
 pub mod autograd;
+
+pub use rng::seed;
 pub mod nn;
 pub mod attention;
 pub mod optim;

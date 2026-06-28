@@ -3,9 +3,10 @@ pub mod matmul;
 pub mod broadcast;
 pub mod ops;
 
-use rand::rng;
 use rand_distr::{Distribution, Normal};
 use std::ops::{Index, IndexMut};
+
+use crate::rng::with_rng;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
@@ -41,14 +42,10 @@ impl Tensor {
     }
 
     pub fn randn(shape: &[usize]) -> Self {
-        let mut rng = rng();
         let normal = Normal::new(0.0, 1.0).unwrap();
-
         let size: usize = shape.iter().product();
-        let data: Vec<f32> = (0..size)
-            .map(|_| normal.sample(&mut rng) as f32)
-            .collect();
-
+        let data: Vec<f32> =
+            with_rng(|rng| (0..size).map(|_| normal.sample(rng) as f32).collect());
         Self::new(data, shape.to_vec())
     }
 
@@ -59,14 +56,10 @@ impl Tensor {
         let fan_out = shape[shape.len() - 2];
         let std = (2.0 / (fan_in + fan_out) as f32).sqrt();
 
-        let mut rng = rng();
         let normal = Normal::new(0.0, std as f64).unwrap();
-
         let size: usize = shape.iter().product();
-        let data: Vec<f32> = (0..size)
-            .map(|_| normal.sample(&mut rng) as f32)
-            .collect();
-
+        let data: Vec<f32> =
+            with_rng(|rng| (0..size).map(|_| normal.sample(rng) as f32).collect());
         Self::new(data, shape.to_vec())
     }
 
@@ -77,15 +70,11 @@ impl Tensor {
         let fan_out = shape[shape.len() - 2];
         let limit = (6.0 / (fan_in + fan_out) as f32).sqrt();
 
-        let mut rng = rng();
         let uniform = rand_distr::Uniform::new(-limit, limit)
             .expect("failed to initialise uniform distr");
-
         let size: usize = shape.iter().product();
-        let data: Vec<f32> = (0..size)
-            .map(|_| uniform.sample(&mut rng) as f32)
-            .collect();
-
+        let data: Vec<f32> =
+            with_rng(|rng| (0..size).map(|_| uniform.sample(rng)).collect());
         Self::new(data, shape.to_vec())
     }
 
@@ -95,14 +84,10 @@ impl Tensor {
         let fan_in = shape[shape.len() - 1];
         let std = (2.0 / fan_in as f32).sqrt();
 
-        let mut rng = rng();
         let normal = Normal::new(0.0, std as f64).unwrap();
-
         let size: usize = shape.iter().product();
-        let data: Vec<f32> = (0..size)
-            .map(|_| normal.sample(&mut rng) as f32)
-            .collect();
-
+        let data: Vec<f32> =
+            with_rng(|rng| (0..size).map(|_| normal.sample(rng) as f32).collect());
         Self::new(data, shape.to_vec())
     }
 

@@ -1,6 +1,7 @@
 use rand::Rng;
 
 use crate::autograd::Var;
+use crate::rng::with_rng;
 use crate::tensor::Tensor;
 
 /// Inverted dropout.
@@ -31,10 +32,11 @@ impl Dropout {
         let shape = x.tensor().shape().to_vec();
         let size: usize = shape.iter().product();
 
-        let mut rng = rand::rng();
-        let mask_data: Vec<f32> = (0..size)
-            .map(|_| if rng.random::<f32>() < self.p { 0.0 } else { scale })
-            .collect();
+        let mask_data: Vec<f32> = with_rng(|rng| {
+            (0..size)
+                .map(|_| if rng.random::<f32>() < self.p { 0.0 } else { scale })
+                .collect()
+        });
 
         // The mask is a constant (no gradient); multiplying by it routes the
         // gradient straight through for kept positions and zeroes it for
