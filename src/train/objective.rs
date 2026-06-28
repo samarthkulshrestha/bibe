@@ -93,11 +93,111 @@ pub fn batch_contrastive_loss(
     total.map(|t| t.mul_scalar(1.0 / anomalous.len() as f32))
 }
 
+/// Attribution supervision: push each symptom query's attention toward the
+/// labeled causal event.
+///
+/// `attention_weights` are the per-layer self-attention tensors
+/// `[batch*num_heads, seq, seq]`. `supervised` lists `(window, symptom, cause)`
+/// triples — typically only windows where the cause differs from the symptom.
+/// For each layer and triple, the attention from the symptom query to the
+/// cause is averaged over heads and penalized by `-log`, so minimizing the
+/// loss drives that attention mass toward 1. Returns `None` when there is
+/// nothing to supervise.
+pub fn attribution_supervision_loss(
+    attention_weights: &[Var],
+    supervised: &[(usize, usize, usize)],
+    num_heads: usize,
+) -> Option<Var> {
+    if supervised.is_empty() || attention_weights.is_empty() {
+        return None;
+    }
+
+    let mut total: Option<Var> = None;
+    let mut terms = 0usize;
+
+    for attn in attention_weights {
+        let shape = attn.tensor().shape().to_vec();
+        let (bh, seq) = (shape[0], shape[1]);
+        // Flatten [bh, seq, seq] -> [bh*seq, seq] so each (group, query) row is
+        // addressable by select_row.
+        let flat = attn.reshape(&[bh * seq, seq]);
+
+        for &(window, symptom, cause) in supervised {
+            // Average the symptom query's attention-to-cause over heads.
+            let mut acc: Option<Var> = None;
+            for h in 0..num_heads {
+                let group = window * num_heads + h;
+                let row = flat.select_row(group * seq + symptom); // [seq]
+                let to_cause = row.reshape(&[seq, 1]).select_row(cause); // [1]
+                acc = Some(match acc {
+                    Some(a) => a.add(&to_cause),
+                    None => to_cause,
+                });
+            }
+            let avg = acc.unwrap().mul_scalar(1.0 / num_heads as f32);
+            // -log(attention to cause): minimized as that attention -> 1.
+            let term = avg.add_scalar(EPS).log().mul_scalar(-1.0);
+            total = Some(match total {
+                Some(t) => t.add(&term),
+                None => term,
+            });
+            terms += 1;
+        }
+    }
+
+    total.map(|t| t.mul_scalar(1.0 / terms as f32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use super::super::loss::focal_loss;
     use crate::tensor::Tensor;
+
+    /// Build a [heads, seq, seq] attention tensor whose query-row `q` is
+    /// `row`, with every other row uniform.
+    fn attn_with_query_row(heads: usize, seq: usize, q: usize, row: &[f32]) -> Tensor {
+        let uniform = 1.0 / seq as f32;
+        let mut data = vec![uniform; heads * seq * seq];
+        for h in 0..heads {
+            for j in 0..seq {
+                data[h * seq * seq + q * seq + j] = row[j];
+            }
+        }
+        Tensor::new(data, vec![heads, seq, seq])
+    }
+
+    #[test]
+    fn test_attribution_none_when_empty() {
+        let attn = vec![Var::new(Tensor::zeros(&[2, 3, 3]), false)];
+        assert!(attribution_supervision_loss(&attn, &[], 2).is_none());
+    }
+
+    #[test]
+    fn test_attribution_lower_when_pointing_at_cause() {
+        // Symptom query = 2, cause = 0.
+        let pointed = attn_with_query_row(2, 3, 2, &[1.0, 0.0, 0.0]); // all mass on cause
+        let uniform = attn_with_query_row(2, 3, 2, &[1.0 / 3.0; 3]); // spread out
+
+        let lp = attribution_supervision_loss(&[Var::new(pointed, false)], &[(0, 2, 0)], 2)
+            .unwrap()
+            .tensor()
+            .data[0];
+        let lu = attribution_supervision_loss(&[Var::new(uniform, false)], &[(0, 2, 0)], 2)
+            .unwrap()
+            .tensor()
+            .data[0];
+        assert!(lp < lu, "pointing at the cause should give lower loss: {lp} vs {lu}");
+        assert!(lp < 1e-3, "perfect attention to cause should be ~0, got {lp}");
+    }
+
+    #[test]
+    fn test_attribution_gradient_flows() {
+        let attn = Var::new(attn_with_query_row(2, 3, 2, &[0.2, 0.3, 0.5]), true);
+        let loss = attribution_supervision_loss(&[attn.clone()], &[(0, 2, 0)], 2).unwrap();
+        loss.backward();
+        assert!(attn.grad().is_some(), "attention should receive gradient");
+    }
 
     #[test]
     fn test_masked_focal_equals_focal_when_all_real() {
