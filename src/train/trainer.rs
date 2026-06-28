@@ -34,7 +34,11 @@ impl Default for TrainConfig {
             focal_alpha: 0.75,
             focal_gamma: 2.0,
             sparsity_lambda: 0.01,
-            contrastive_lambda: 1.0,
+            // Off by default: the leave-one-out sweep (examples/ood_study.rs)
+            // showed the trace-pooled contrastive term hurts both in- and
+            // out-of-distribution detection at this scale. Kept available for
+            // noisier, less-separable data where it may help.
+            contrastive_lambda: 0.0,
             contrastive_temp: 0.07,
             attribution_lambda: 0.0,
         }
