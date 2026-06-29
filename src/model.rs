@@ -16,6 +16,9 @@ pub struct BibeConfig {
     pub n_aux: usize,
     /// Size of the object-id vocabulary (0-id reserved for "no object").
     pub num_objects: usize,
+    /// Additive attention bias favoring keys that share the query's object
+    /// (0 disables it). Structurally points a use toward its same-object free.
+    pub object_bias: f32,
     pub max_len: usize,
     pub dropout_p: f32,
 }
@@ -46,6 +49,7 @@ pub struct BibeModel {
     encoder: TransformerEncoder,
     anomaly_head: AnomalyHead,
     num_heads: usize,
+    object_bias: f32,
 }
 
 impl BibeModel {
@@ -65,6 +69,7 @@ impl BibeModel {
             ),
             anomaly_head: AnomalyHead::new(config.d_model),
             num_heads: config.num_heads,
+            object_bias: config.object_bias,
         }
     }
 
@@ -89,9 +94,9 @@ impl BibeModel {
         let pos = self.pos_encoding.forward(seq);
         let x = tok.add(&obj).add(&aux_emb).add(&pos);
 
-        // Bidirectional encoder (padded key positions masked out), per-position
-        // anomaly scores.
-        let mask = padding_mask(function_ids, batch, seq);
+        // Bidirectional encoder: padded keys masked out, and (optionally) keys
+        // sharing the query's object favored. Per-position anomaly scores.
+        let mask = attention_bias(function_ids, object_ids, self.object_bias, batch, seq);
         let (hidden, attention_weights) = self.encoder.forward(&x, training, mask.as_ref());
         let anomaly_scores = self.anomaly_head.forward(&hidden);
 
@@ -114,19 +119,34 @@ impl BibeModel {
     }
 }
 
-/// Additive attention mask that suppresses padded key positions (those whose
-/// id is `PAD_ID`). Shape `[batch, seq, seq]`: `-1e9` at padded key columns so
-/// softmax gives them ~0 weight; `None` when there is no padding.
-fn padding_mask(function_ids: &[usize], batch: usize, seq: usize) -> Option<Var> {
-    if !function_ids.contains(&PAD_ID) {
+/// Additive attention bias `[batch, seq, seq]` combining two effects on the
+/// score for query `i` attending to key `j`:
+///   * padding: `-1e9` when key `j` is a `PAD_ID` position (softmax -> ~0),
+///   * object: `+object_bias` when `i` and `j` share the same nonzero object.
+///
+/// Returns `None` when there is no padding and the object bias is disabled.
+fn attention_bias(
+    function_ids: &[usize],
+    object_ids: &[usize],
+    object_bias: f32,
+    batch: usize,
+    seq: usize,
+) -> Option<Var> {
+    let has_pad = function_ids.contains(&PAD_ID);
+    if !has_pad && object_bias == 0.0 {
         return None;
     }
+
     let mut data = vec![0.0f32; batch * seq * seq];
     for b in 0..batch {
-        for j in 0..seq {
-            if function_ids[b * seq + j] == PAD_ID {
-                for i in 0..seq {
-                    data[b * seq * seq + i * seq + j] = -1e9;
+        for i in 0..seq {
+            let oi = object_ids[b * seq + i];
+            for j in 0..seq {
+                let cell = &mut data[b * seq * seq + i * seq + j];
+                if function_ids[b * seq + j] == PAD_ID {
+                    *cell = -1e9;
+                } else if object_bias != 0.0 && oi != 0 && oi == object_ids[b * seq + j] {
+                    *cell = object_bias;
                 }
             }
         }
@@ -160,6 +180,7 @@ mod tests {
             num_layers: 3,
             n_aux: 4,
             num_objects: 8,
+            object_bias: 0.0,
             max_len: 32,
             dropout_p: 0.0,
         }
@@ -190,6 +211,23 @@ mod tests {
         let out = model.forward(&ids, &obj, &aux, 2, 6, false);
         // [batch, seq, d_model]
         assert_eq!(out.hidden.tensor().shape(), &[2, 6, 16]);
+    }
+
+    #[test]
+    fn test_attention_bias_favors_same_object_and_masks_padding() {
+        // seq 3: ids [1, 2, PAD], objects [5, 5, 0], bias 2.0.
+        let fids = vec![1usize, 2, 0];
+        let objs = vec![5usize, 5, 0];
+        let bias = attention_bias(&fids, &objs, 2.0, 1, 3).unwrap();
+        let t = bias.tensor();
+        // Padded key column 2 is masked for every query.
+        for i in 0..3 {
+            assert!(t.get(&[0, i, 2]) < -1e8);
+        }
+        // Queries 0 and 1 share object 5 -> +2.0 to each other and themselves.
+        assert!((t.get(&[0, 0, 1]) - 2.0).abs() < 1e-6);
+        assert!((t.get(&[0, 1, 0]) - 2.0).abs() < 1e-6);
+        assert!((t.get(&[0, 0, 0]) - 2.0).abs() < 1e-6);
     }
 
     #[test]

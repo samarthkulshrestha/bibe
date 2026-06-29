@@ -35,7 +35,9 @@ fn main() {
         Some("margin") => AttributionTarget::Margin,
         _ => AttributionTarget::RawAttention,
     };
-    println!("attribution supervision target: {target:?}");
+    // Optional 3rd arg: object-aware attention bias strength (default 0).
+    let object_bias: f32 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    println!("attribution supervision target: {target:?}, object_bias: {object_bias}");
 
     // Load and deterministically order all captured traces.
     let mut paths: Vec<_> = std::fs::read_dir(&dir)
@@ -64,11 +66,11 @@ fn main() {
     let vocab = Vocabulary::build(train, 1);
     println!("vocabulary size: {}", vocab.len());
 
-    let trainer = train_on(train, &vocab, target);
+    let trainer = train_on(train, &vocab, target, object_bias);
     evaluate(trainer.model(), &vocab, test);
 }
 
-fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget) -> Trainer {
+fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget, object_bias: f32) -> Trainer {
     let mut windows = Vec::new();
     for t in dataset {
         windows.extend(extract_windows(t, WINDOW, WINDOW));
@@ -88,6 +90,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget) ->
         num_layers: 2,
         n_aux: N_AUX,
         num_objects: 8,
+        object_bias,
         max_len: WINDOW,
         dropout_p: 0.0,
     };
