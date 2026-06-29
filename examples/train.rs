@@ -69,6 +69,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, verbose: bool) -> Trainer {
         d_ff: 256,
         num_layers: 2,
         n_aux: N_AUX,
+        num_objects: 8,
         max_len: WINDOW,
         dropout_p: 0.0,
     };
@@ -106,7 +107,7 @@ fn detection_auc(model: &BibeModel, vocab: &Vocabulary, eval_set: &[Trace]) -> f
         for window in extract_windows(trace, WINDOW, WINDOW) {
             let batch = collate(&[window], vocab);
             let aux = Var::new(batch.aux.clone(), false);
-            let out = model.forward(&batch.function_ids, &aux, 1, batch.seq, false);
+            let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, 1, batch.seq, false);
             let s = out.anomaly_scores.tensor().data;
             for (i, &score) in s.iter().enumerate() {
                 if batch.pad_mask.data[i] > 0.5 {
@@ -129,7 +130,7 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, eval_set: &[Trace]) {
         for window in extract_windows(trace, WINDOW, WINDOW) {
             let batch = collate(&[window], vocab);
             let aux = Var::new(batch.aux.clone(), false);
-            let out = model.forward(&batch.function_ids, &aux, 1, batch.seq, false);
+            let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, 1, batch.seq, false);
             let scores = out.anomaly_scores.tensor().data;
 
             let mut win_scores = Vec::new();
@@ -188,7 +189,7 @@ fn attribution_experiment(model: &BibeModel, vocab: &Vocabulary) {
         let windows = extract_windows(&trace, WINDOW, WINDOW);
         let batch = collate(&windows[..1], vocab);
         let aux = Var::new(batch.aux.clone(), false);
-        let out = model.forward(&batch.function_ids, &aux, 1, batch.seq, false);
+        let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, 1, batch.seq, false);
 
         let row = attribution_row(&out.attribution, 0, crash);
         let mut ranked: Vec<usize> = (0..batch.seq)

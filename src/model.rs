@@ -14,6 +14,8 @@ pub struct BibeConfig {
     pub num_layers: usize,
     /// Number of auxiliary per-event features (call depth, cache misses, ...).
     pub n_aux: usize,
+    /// Size of the object-id vocabulary (0-id reserved for "no object").
+    pub num_objects: usize,
     pub max_len: usize,
     pub dropout_p: f32,
 }
@@ -32,12 +34,13 @@ pub struct ModelOutput {
     pub attribution: Tensor,
 }
 
-/// The full BiBE encoder model: function-ID embeddings plus projected
-/// auxiliary features and sinusoidal positions, encoded by a bidirectional
-/// transformer stack, with a per-position anomaly head and attention-rollout
-/// attribution.
+/// The full BiBE encoder model: function-ID and object-id embeddings plus
+/// projected auxiliary features and sinusoidal positions, encoded by a
+/// bidirectional transformer stack, with a per-position anomaly head and
+/// head-averaged attention attribution.
 pub struct BibeModel {
     embedding: Embedding,
+    object_embedding: Embedding,
     aux_projection: Linear,
     pos_encoding: PositionalEncoding,
     encoder: TransformerEncoder,
@@ -50,6 +53,7 @@ impl BibeModel {
     pub fn new(config: &BibeConfig) -> Self {
         BibeModel {
             embedding: Embedding::new(config.vocab_size, config.d_model),
+            object_embedding: Embedding::new(config.num_objects, config.d_model),
             aux_projection: Linear::new(config.n_aux, config.d_model, true),
             pos_encoding: PositionalEncoding::new(config.max_len, config.d_model),
             encoder: TransformerEncoder::new(
@@ -71,16 +75,19 @@ impl BibeModel {
     pub fn forward(
         &self,
         function_ids: &[usize],
+        object_ids: &[usize],
         aux: &Var,
         batch: usize,
         seq: usize,
         training: bool,
     ) -> ModelOutput {
-        // Function-ID embeddings + projected auxiliary features + positions.
+        // Function-ID + object-id embeddings + projected aux features + positions.
+        // The object embedding ties events touching the same object together.
         let tok = self.embedding.forward(function_ids, &[batch, seq]);
+        let obj = self.object_embedding.forward(object_ids, &[batch, seq]);
         let aux_emb = self.aux_projection.forward(aux);
         let pos = self.pos_encoding.forward(seq);
-        let x = tok.add(&aux_emb).add(&pos);
+        let x = tok.add(&obj).add(&aux_emb).add(&pos);
 
         // Bidirectional encoder (padded key positions masked out), per-position
         // anomaly scores.
@@ -132,6 +139,7 @@ impl BibeModel {
     /// Collect all trainable parameters for the optimizer.
     pub fn parameters(&self) -> Vec<Var> {
         let mut params = self.embedding.parameters();
+        params.extend(self.object_embedding.parameters());
         params.extend(self.aux_projection.parameters());
         params.extend(self.encoder.parameters());
         params.extend(self.anomaly_head.parameters());
@@ -151,22 +159,24 @@ mod tests {
             d_ff: 32,
             num_layers: 3,
             n_aux: 4,
+            num_objects: 8,
             max_len: 32,
             dropout_p: 0.0,
         }
     }
 
-    fn sample_input(batch: usize, seq: usize, n_aux: usize) -> (Vec<usize>, Var) {
+    fn sample_input(batch: usize, seq: usize, n_aux: usize) -> (Vec<usize>, Vec<usize>, Var) {
         let ids: Vec<usize> = (0..batch * seq).map(|i| i % 20).collect();
+        let objects: Vec<usize> = (0..batch * seq).map(|i| i % 8).collect();
         let aux = Var::new(Tensor::randn(&[batch, seq, n_aux]), false);
-        (ids, aux)
+        (ids, objects, aux)
     }
 
     #[test]
     fn test_output_shapes() {
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(2, 6, 4);
-        let out = model.forward(&ids, &aux, 2, 6, false);
+        let (ids, obj, aux) = sample_input(2, 6, 4);
+        let out = model.forward(&ids, &obj, &aux, 2, 6, false);
 
         assert_eq!(out.anomaly_scores.tensor().shape(), &[2, 6]);
         assert_eq!(out.attention_weights.len(), 3);
@@ -176,8 +186,8 @@ mod tests {
     #[test]
     fn test_hidden_states_exposed() {
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(2, 6, 4);
-        let out = model.forward(&ids, &aux, 2, 6, false);
+        let (ids, obj, aux) = sample_input(2, 6, 4);
+        let out = model.forward(&ids, &obj, &aux, 2, 6, false);
         // [batch, seq, d_model]
         assert_eq!(out.hidden.tensor().shape(), &[2, 6, 16]);
     }
@@ -188,8 +198,9 @@ mod tests {
         // receive ~0 attention in the attribution map.
         let model = BibeModel::new(&tiny_config());
         let ids = vec![1usize, 2, 3, 0, 0, 0];
+        let obj = vec![0usize; 6];
         let aux = Var::new(Tensor::zeros(&[1, 6, 4]), false);
-        let out = model.forward(&ids, &aux, 1, 6, false);
+        let out = model.forward(&ids, &obj, &aux, 1, 6, false);
         for i in 0..6 {
             for pad_j in 3..6 {
                 assert!(
@@ -204,8 +215,8 @@ mod tests {
     #[test]
     fn test_scores_are_probabilities() {
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(2, 5, 4);
-        let out = model.forward(&ids, &aux, 2, 5, false);
+        let (ids, obj, aux) = sample_input(2, 5, 4);
+        let out = model.forward(&ids, &obj, &aux, 2, 5, false);
         for &v in &out.anomaly_scores.tensor().data {
             assert!(v > 0.0 && v < 1.0, "score {v} is not a probability");
         }
@@ -214,8 +225,8 @@ mod tests {
     #[test]
     fn test_attribution_rows_sum_to_one() {
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(1, 5, 4);
-        let out = model.forward(&ids, &aux, 1, 5, false);
+        let (ids, obj, aux) = sample_input(1, 5, 4);
+        let out = model.forward(&ids, &obj, &aux, 1, 5, false);
         for i in 0..5 {
             let sum: f32 = (0..5).map(|j| out.attribution.get(&[0, i, j])).sum();
             assert!((sum - 1.0).abs() < 1e-5, "attribution row {i} sums to {sum}");
@@ -225,8 +236,8 @@ mod tests {
     #[test]
     fn test_output_is_finite() {
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(2, 5, 4);
-        let out = model.forward(&ids, &aux, 2, 5, false);
+        let (ids, obj, aux) = sample_input(2, 5, 4);
+        let out = model.forward(&ids, &obj, &aux, 2, 5, false);
         assert!(out.anomaly_scores.tensor().data.iter().all(|v| v.is_finite()));
     }
 
@@ -235,8 +246,8 @@ mod tests {
         // A loss on the anomaly scores must reach every parameter, including
         // the embedding table and the auxiliary-feature projection.
         let model = BibeModel::new(&tiny_config());
-        let (ids, aux) = sample_input(2, 4, 4);
-        let out = model.forward(&ids, &aux, 2, 4, true);
+        let (ids, obj, aux) = sample_input(2, 4, 4);
+        let out = model.forward(&ids, &obj, &aux, 2, 4, true);
         let loss = out.anomaly_scores.sum();
         loss.backward();
 

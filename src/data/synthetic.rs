@@ -304,12 +304,13 @@ mod tests {
             d_ff: 32,
             num_layers: 2,
             n_aux: N_AUX,
+            num_objects: 8,
             max_len: 64,
             dropout_p: 0.0,
         };
         let model = BibeModel::new(&config);
         let aux = Var::new(batch.aux.clone(), false);
-        let out = model.forward(&batch.function_ids, &aux, batch.batch, batch.seq, false);
+        let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, batch.batch, batch.seq, false);
         assert_eq!(out.anomaly_scores.tensor().shape(), &[batch.batch, batch.seq]);
         assert!(out.anomaly_scores.tensor().data.iter().all(|v| v.is_finite()));
     }

@@ -172,10 +172,12 @@ mod tests {
             d_ff: 32,
             num_layers: 2,
             n_aux: N_AUX,
+            num_objects: 8,
             max_len: 16,
             dropout_p: 0.0,
         };
         let ids = vec![1usize, 2, 3, 4];
+        let obj = vec![0usize; 4];
         let aux = Var::new(Tensor::randn(&[1, 4, N_AUX]), false);
 
         let trained = BibeModel::new(&config);
@@ -184,13 +186,13 @@ mod tests {
 
         // A fresh model has different random weights, hence different output...
         let fresh = BibeModel::new(&config);
-        let before = fresh.forward(&ids, &aux, 1, 4, false).anomaly_scores.tensor().data;
-        let target = trained.forward(&ids, &aux, 1, 4, false).anomaly_scores.tensor().data;
+        let before = fresh.forward(&ids, &obj, &aux, 1, 4, false).anomaly_scores.tensor().data;
+        let target = trained.forward(&ids, &obj, &aux, 1, 4, false).anomaly_scores.tensor().data;
         assert!(before.iter().zip(&target).any(|(a, b)| (a - b).abs() > 1e-6));
 
         // ...until we load the saved parameters into it.
         load_parameters(&path, &fresh.parameters()).unwrap();
-        let after = fresh.forward(&ids, &aux, 1, 4, false).anomaly_scores.tensor().data;
+        let after = fresh.forward(&ids, &obj, &aux, 1, 4, false).anomaly_scores.tensor().data;
         for (a, t) in after.iter().zip(&target) {
             assert!((a - t).abs() < 1e-6, "loaded model output differs: {a} vs {t}");
         }

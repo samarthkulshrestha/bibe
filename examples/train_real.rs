@@ -87,6 +87,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget) ->
         d_ff: 256,
         num_layers: 2,
         n_aux: N_AUX,
+        num_objects: 8,
         max_len: WINDOW,
         dropout_p: 0.0,
     };
@@ -120,7 +121,7 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         let windows = extract_windows(trace, WINDOW, WINDOW);
         let batch = collate(&windows[..1], vocab);
         let aux = Var::new(batch.aux.clone(), false);
-        let out = model.forward(&batch.function_ids, &aux, 1, batch.seq, false);
+        let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, 1, batch.seq, false);
         let scores = out.anomaly_scores.tensor().data;
 
         // Detection + localization over real positions.
