@@ -148,11 +148,75 @@ pub fn attribution_supervision_loss(
     total.map(|t| t.mul_scalar(1.0 / terms as f32))
 }
 
+/// Attribution supervision applied directly to the differentiable attention
+/// rollout `[batch, seq, seq]`.
+///
+/// For each `(window, symptom, cause)` triple, the rollout influence from the
+/// symptom query to the cause is penalized by `-log`, so minimizing drives the
+/// rollout — the value actually used for attribution at inference — to put mass
+/// on the cause. Supervising the rollout rather than raw attention removes the
+/// train/eval mismatch. Returns `None` when there is nothing to supervise.
+pub fn rollout_supervision_loss(rollout: &Var, supervised: &[(usize, usize, usize)]) -> Option<Var> {
+    if supervised.is_empty() {
+        return None;
+    }
+
+    let shape = rollout.tensor().shape().to_vec();
+    let seq = shape[1];
+    let flat = rollout.reshape(&[shape[0] * seq, seq]);
+
+    let mut total: Option<Var> = None;
+    for &(window, symptom, cause) in supervised {
+        let row = flat.select_row(window * seq + symptom); // [seq]
+        let to_cause = row.reshape(&[seq, 1]).select_row(cause); // [1]
+        let term = to_cause.add_scalar(EPS).log().mul_scalar(-1.0);
+        total = Some(match total {
+            Some(t) => t.add(&term),
+            None => term,
+        });
+    }
+
+    total.map(|t| t.mul_scalar(1.0 / supervised.len() as f32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use super::super::loss::focal_loss;
     use crate::tensor::Tensor;
+
+    /// A [1, seq, seq] rollout whose query-row `q` is `row`, others uniform.
+    fn rollout_with_query_row(seq: usize, q: usize, row: &[f32]) -> Tensor {
+        let uniform = 1.0 / seq as f32;
+        let mut data = vec![uniform; seq * seq];
+        for (j, &v) in row.iter().enumerate() {
+            data[q * seq + j] = v;
+        }
+        Tensor::new(data, vec![1, seq, seq])
+    }
+
+    #[test]
+    fn test_rollout_supervision_none_when_empty() {
+        let r = Var::new(Tensor::zeros(&[1, 3, 3]), false);
+        assert!(rollout_supervision_loss(&r, &[]).is_none());
+    }
+
+    #[test]
+    fn test_rollout_supervision_lower_when_pointing_at_cause() {
+        let pointed = Var::new(rollout_with_query_row(3, 2, &[1.0, 0.0, 0.0]), false);
+        let uniform = Var::new(rollout_with_query_row(3, 2, &[1.0 / 3.0; 3]), false);
+        let lp = rollout_supervision_loss(&pointed, &[(0, 2, 0)]).unwrap().tensor().data[0];
+        let lu = rollout_supervision_loss(&uniform, &[(0, 2, 0)]).unwrap().tensor().data[0];
+        assert!(lp < lu, "pointing at cause should be lower: {lp} vs {lu}");
+        assert!(lp < 1e-3, "perfect rollout to cause should be ~0, got {lp}");
+    }
+
+    #[test]
+    fn test_rollout_supervision_gradient_flows() {
+        let r = Var::new(rollout_with_query_row(3, 2, &[0.2, 0.3, 0.5]), true);
+        rollout_supervision_loss(&r, &[(0, 2, 0)]).unwrap().backward();
+        assert!(r.grad().is_some());
+    }
 
     /// Build a [heads, seq, seq] attention tensor whose query-row `q` is
     /// `row`, with every other row uniform.
