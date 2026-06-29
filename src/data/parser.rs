@@ -71,9 +71,10 @@ fn parse_label(spec: &str, lineno: usize) -> Result<TraceLabel, String> {
 
 fn parse_event(line: &str, lineno: usize) -> Result<TraceEvent, String> {
     let fields: Vec<&str> = line.split_whitespace().collect();
-    if fields.len() != 7 {
+    // 7 fields, or 8 with a trailing object id (defaults to 0 when absent).
+    if fields.len() != 7 && fields.len() != 8 {
         return Err(format!(
-            "line {lineno}: expected 7 fields, got {}",
+            "line {lineno}: expected 7 or 8 fields, got {}",
             fields.len()
         ));
     }
@@ -94,6 +95,7 @@ fn parse_event(line: &str, lineno: usize) -> Result<TraceEvent, String> {
         l2_misses: num(4, "l2")?,
         llc_misses: num(5, "llc")?,
         branch_misses: num(6, "branch")?,
+        object_id: if fields.len() == 8 { num(7, "object")? } else { 0 },
     })
 }
 
@@ -113,10 +115,10 @@ pub fn serialize_trace(trace: &Trace) -> String {
             out.push_str(&format!("# label=anomalous root_cause={root_cause} cause={cause}\n"));
         }
     }
-    out.push_str("# function timestamp depth l1 l2 llc branch\n");
+    out.push_str("# function timestamp depth l1 l2 llc branch object\n");
     for e in &trace.events {
         out.push_str(&format!(
-            "{} {} {} {} {} {} {}\n",
+            "{} {} {} {} {} {} {} {}\n",
             e.function,
             e.timestamp_us,
             e.call_depth,
@@ -124,6 +126,7 @@ pub fn serialize_trace(trace: &Trace) -> String {
             e.l2_misses,
             e.llc_misses,
             e.branch_misses,
+            e.object_id,
         ));
     }
     out
@@ -163,6 +166,7 @@ use 1020 1 5 2 1 3
                 l2_misses: 0,
                 llc_misses: 0,
                 branch_misses: 1,
+                object_id: 0,
             }
         );
         assert_eq!(t.events[1].function, "memcpy");
@@ -176,6 +180,14 @@ use 1020 1 5 2 1 3
         assert_eq!(t.label, TraceLabel::Anomalous { root_cause: 2, cause: 2 });
         assert_eq!(t.len(), 3);
         assert_eq!(t.events[2].function, "use");
+    }
+
+    #[test]
+    fn test_parse_object_column() {
+        let text = "# label=normal\nmalloc 1000 0 0 0 0 0 7\nfree 1010 0 0 0 0 0 7\n";
+        let t = parse_trace(text).unwrap();
+        assert_eq!(t.events[0].object_id, 7);
+        assert_eq!(t.events[1].object_id, 7); // same object
     }
 
     #[test]

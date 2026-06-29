@@ -38,6 +38,7 @@ mod tests {
             l2_misses: l2,
             llc_misses: llc,
             branch_misses: branch,
+            object_id: 0,
         }
     }
 

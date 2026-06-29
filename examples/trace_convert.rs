@@ -75,28 +75,51 @@ fn main() {
     }
 }
 
-/// Parse `E <function> <ts> <depth>` lines into events (counters unmeasured -> 0).
+/// Parse the capture log into events. `E <function> <ts> <depth>` lines become
+/// events (counters unmeasured -> 0); each `O <address>` line tags the most
+/// recent event with an object id assigned per distinct allocation address, so
+/// events touching the same object share an id (0 = no object).
 fn parse_events(log: &str) -> Vec<TraceEvent> {
-    log.lines()
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            if parts.next() != Some("E") {
-                return None;
+    use std::collections::HashMap;
+    let mut events: Vec<TraceEvent> = Vec::new();
+    let mut addr_to_id: HashMap<String, u32> = HashMap::new();
+    let mut next_id: u32 = 1;
+
+    for line in log.lines() {
+        let mut parts = line.split_whitespace();
+        match parts.next() {
+            Some("E") => {
+                let function = match parts.next() {
+                    Some(f) => f.to_string(),
+                    None => continue,
+                };
+                let timestamp_us = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                let call_depth = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                events.push(TraceEvent {
+                    function,
+                    timestamp_us,
+                    call_depth,
+                    l1_misses: 0,
+                    l2_misses: 0,
+                    llc_misses: 0,
+                    branch_misses: 0,
+                    object_id: 0,
+                });
             }
-            let function = parts.next()?.to_string();
-            let timestamp_us = parts.next()?.parse().ok()?;
-            let call_depth = parts.next()?.parse().ok()?;
-            Some(TraceEvent {
-                function,
-                timestamp_us,
-                call_depth,
-                l1_misses: 0,
-                l2_misses: 0,
-                llc_misses: 0,
-                branch_misses: 0,
-            })
-        })
-        .collect()
+            Some("O") => {
+                if let (Some(addr), Some(last)) = (parts.next(), events.last_mut()) {
+                    let id = *addr_to_id.entry(addr.to_string()).or_insert_with(|| {
+                        let v = next_id;
+                        next_id += 1;
+                        v
+                    });
+                    last.object_id = id;
+                }
+            }
+            _ => {}
+        }
+    }
+    events
 }
 
 /// First stack frame (after the line containing `header`) whose function name

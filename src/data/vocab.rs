@@ -85,6 +85,7 @@ mod tests {
                 l2_misses: 0,
                 llc_misses: 0,
                 branch_misses: 0,
+                object_id: 0,
             })
             .collect();
         Trace { events, label: TraceLabel::Normal }

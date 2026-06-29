@@ -54,3 +54,15 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
     (void)call_site;
     if (g_depth > 0) g_depth--;
 }
+
+// Called explicitly by instrumented code to record the object (pointer
+// address) the current function touches. Logged as `O <address>` right after
+// the function's entry event, so the converter can tie events on the same
+// allocation together by real address.
+__attribute__((no_instrument_function))
+void bibe_obj_event(void *ptr) {
+    FILE *f = log_file();
+    if (!f) return;
+    fprintf(f, "O %p\n", ptr);
+    fflush(f);
+}

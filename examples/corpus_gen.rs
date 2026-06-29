@@ -53,10 +53,13 @@ fn program(rng: &mut StdRng, anomalous: bool) -> String {
 
     let mut s = String::new();
     s.push_str("#include <stdio.h>\n#include <stdlib.h>\n\n");
-    s.push_str("char *allocate(void) { return (char *)malloc(16); }\n");
+    // Provided by the instrumentation shim; records the object (real pointer
+    // address) the current function touches.
+    s.push_str("void bibe_obj_event(void *p);\n\n");
+    s.push_str("char *allocate(void) { char *p = (char *)malloc(16); bibe_obj_event(p); return p; }\n");
     for i in 0..k {
-        s.push_str(&format!("void free_{i}(char *p) {{ free(p); }}\n"));
-        s.push_str(&format!("char use_{i}(char *p) {{ return p[0]; }}\n"));
+        s.push_str(&format!("void free_{i}(char *p) {{ bibe_obj_event(p); free(p); }}\n"));
+        s.push_str(&format!("char use_{i}(char *p) {{ bibe_obj_event(p); return p[0]; }}\n"));
     }
     for w in 0..WORK_POOL {
         s.push_str(&format!(

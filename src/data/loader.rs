@@ -20,27 +20,11 @@ pub struct Batch {
     /// Per-position causal-event labels `[batch, seq]` (1.0 at the cause).
     pub cause: Tensor,
     /// Per-position object id `[batch*seq]`, tying events on the same object
-    /// together (0 = no object). See [`object_id_from_name`].
+    /// together (0 = no object). Derived from allocation addresses at capture.
     pub object_ids: Vec<usize>,
     pub pad_mask: Tensor,
     pub batch: usize,
     pub seq: usize,
-}
-
-/// Derive an object id from a function name.
-///
-/// A stopgap for the templated corpus: `free_N` / `use_N` call sites map to
-/// object `N + 1` (so events touching the same object share an id), everything
-/// else to 0. Real captures would assign object ids from allocation addresses.
-pub fn object_id_from_name(name: &str) -> usize {
-    for prefix in ["free_", "use_"] {
-        if let Some(suffix) = name.strip_prefix(prefix)
-            && let Ok(n) = suffix.parse::<usize>()
-        {
-            return n + 1;
-        }
-    }
-    0
 }
 
 /// Encode and stack a slice of equal-length windows into a [`Batch`].
@@ -58,7 +42,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
     for w in windows {
         for (i, ev) in w.events.iter().enumerate() {
             function_ids.push(vocab.encode(&ev.function));
-            object_ids.push(object_id_from_name(&ev.function));
+            object_ids.push(ev.object_id as usize);
             aux.extend_from_slice(&aux_features(ev));
             labels.push(w.labels[i]);
             cause.push(w.cause_labels[i]);
@@ -138,6 +122,7 @@ mod tests {
             l2_misses: 0,
             llc_misses: 0,
             branch_misses: 0,
+            object_id: 0,
         }
     }
 
@@ -184,25 +169,21 @@ mod tests {
     }
 
     #[test]
-    fn test_object_id_from_name() {
-        assert_eq!(object_id_from_name("free_3"), 4);
-        assert_eq!(object_id_from_name("use_3"), 4); // same object as free_3
-        assert_eq!(object_id_from_name("free_0"), 1);
-        assert_eq!(object_id_from_name("free"), 0);
-        assert_eq!(object_id_from_name("work_2"), 0);
-        assert_eq!(object_id_from_name("main"), 0);
-    }
-
-    #[test]
-    fn test_collate_object_ids_link_same_object() {
+    fn test_collate_carries_object_ids() {
+        // Two events on object 2 and one on no object; collate copies the ids
+        // (padding -> 0).
+        let mut e0 = event("use", 0);
+        e0.object_id = 2;
+        let e1 = event("work", 0);
+        let mut e2 = event("free", 0);
+        e2.object_id = 2;
         let trace = Trace {
-            events: vec![event("use_1", 0), event("work_0", 0), event("free_1", 0)],
+            events: vec![e0, e1, e2],
             label: TraceLabel::Anomalous { root_cause: 0, cause: 2 },
         };
         let windows = extract_windows(&trace, 4, 4);
         let vocab = Vocabulary::build(std::slice::from_ref(&trace), 1);
         let b = collate(&windows, &vocab);
-        // use_1 and free_1 share object id 2; work_0 and padding are 0.
         assert_eq!(b.object_ids, vec![2, 0, 2, 0]);
     }
 

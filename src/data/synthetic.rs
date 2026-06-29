@@ -145,6 +145,7 @@ impl TraceGenerator {
             l2_misses: self.rng.random_range(0..2),
             llc_misses: self.rng.random_range(0..2),
             branch_misses: self.rng.random_range(0..2),
+            object_id: 0,
         }
     }
 

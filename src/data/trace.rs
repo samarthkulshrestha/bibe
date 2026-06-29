@@ -12,6 +12,9 @@ pub struct TraceEvent {
     pub l2_misses: u32,
     pub llc_misses: u32,
     pub branch_misses: u32,
+    /// Object this event touches (0 = none). Assigned from the allocation
+    /// address at capture time so events on the same object share an id.
+    pub object_id: u32,
 }
 
 /// Trace-level label: either a clean run or an anomalous one.
@@ -79,6 +82,7 @@ mod tests {
             l2_misses: 0,
             llc_misses: 0,
             branch_misses: 0,
+            object_id: 0,
         }
     }
 

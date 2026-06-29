@@ -11,5 +11,5 @@ pub use parser::{parse_trace, parse_trace_file, serialize_trace};
 pub use vocab::Vocabulary;
 pub use normalize::{aux_features, N_AUX};
 pub use window::{extract_windows, TraceWindow};
-pub use loader::{collate, object_id_from_name, Batch, DataLoader};
+pub use loader::{collate, Batch, DataLoader};
 pub use synthetic::{BugKind, GeneratorConfig, TraceGenerator};
