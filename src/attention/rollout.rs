@@ -1,5 +1,46 @@
+use crate::autograd::Var;
 use crate::tensor::Tensor;
 use crate::tensor::matmul::batched_matmul;
+
+/// Differentiable attention rollout over `Var` attention weights.
+///
+/// Same construction as [`attention_rollout`] (head-average, residual mix
+/// `0.5·A + 0.5·I`, multiply across layers) but built from autograd `Var`
+/// operations so gradients flow back into the attention weights — letting the
+/// rollout itself be supervised. Returns `[batch, seq, seq]`.
+///
+/// Head-averaged residual-mixed rows already sum to 1, so no explicit
+/// renormalization is needed.
+pub fn attention_rollout_var(attention_weights: &[Var], num_heads: usize, batch: usize) -> Var {
+    assert!(!attention_weights.is_empty(), "need at least one attention layer");
+    let seq = attention_weights[0].tensor().shape()[1];
+    let half_identity = Var::new(scaled_identity(seq, 0.5), false);
+
+    let mut acc: Option<Var> = None;
+    for attn in attention_weights {
+        // Average over heads: [batch*H, seq, seq] -> [batch, seq, seq].
+        let head_avg = attn
+            .reshape(&[batch, num_heads, seq, seq])
+            .mean(1)
+            .reshape(&[batch, seq, seq]);
+        // 0.5*A + 0.5*I (identity broadcasts over the batch).
+        let aug = head_avg.mul_scalar(0.5).add(&half_identity);
+        acc = Some(match acc {
+            Some(a) => aug.matmul(&a),
+            None => aug,
+        });
+    }
+    acc.unwrap()
+}
+
+/// A `[1, seq, seq]` tensor with `scale` on the diagonal (broadcasts over batch).
+fn scaled_identity(seq: usize, scale: f32) -> Tensor {
+    let mut data = vec![0.0f32; seq * seq];
+    for i in 0..seq {
+        data[i * seq + i] = scale;
+    }
+    Tensor::new(data, vec![1, seq, seq])
+}
 
 /// Attention rollout for causal attribution (Abnar & Zuidema, 2020).
 ///
@@ -116,6 +157,35 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_var_rollout_matches_tensor_on_identity() {
+        // Two layers of identity attention -> rollout is the identity, and the
+        // differentiable version agrees with the tensor version.
+        let attn = vec![identity_attn(1, 2, 3), identity_attn(1, 2, 3)];
+        let tensor_roll = attention_rollout(&attn, 2);
+        let var_roll = attention_rollout_var(
+            &attn.iter().map(|t| Var::new(t.clone(), false)).collect::<Vec<_>>(),
+            2,
+            1,
+        );
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!(
+                    (var_roll.tensor().get(&[0, i, j]) - tensor_roll.get(&[0, i, j])).abs() < 1e-5,
+                    "var rollout differs from tensor rollout at [{i},{j}]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_var_rollout_gradient_flows() {
+        let attn = Var::new(uniform_attn(1, 2, 4), true);
+        let roll = attention_rollout_var(&[attn.clone()], 2, 1);
+        roll.sum().backward();
+        assert!(attn.grad().is_some(), "rollout should be differentiable w.r.t attention");
     }
 
     #[test]
