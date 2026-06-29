@@ -1,4 +1,5 @@
 use crate::attention::head_average;
+use crate::data::vocab::PAD_ID;
 use crate::autograd::Var;
 use crate::nn::{Embedding, Linear, PositionalEncoding};
 use crate::tensor::Tensor;
@@ -81,8 +82,10 @@ impl BibeModel {
         let pos = self.pos_encoding.forward(seq);
         let x = tok.add(&aux_emb).add(&pos);
 
-        // Bidirectional encoder, per-position anomaly scores.
-        let (hidden, attention_weights) = self.encoder.forward(&x, training);
+        // Bidirectional encoder (padded key positions masked out), per-position
+        // anomaly scores.
+        let mask = padding_mask(function_ids, batch, seq);
+        let (hidden, attention_weights) = self.encoder.forward(&x, training, mask.as_ref());
         let anomaly_scores = self.anomaly_head.forward(&hidden);
 
         // Attribution from the last layer's head-averaged attention, which
@@ -102,6 +105,29 @@ impl BibeModel {
     pub fn num_heads(&self) -> usize {
         self.num_heads
     }
+}
+
+/// Additive attention mask that suppresses padded key positions (those whose
+/// id is `PAD_ID`). Shape `[batch, seq, seq]`: `-1e9` at padded key columns so
+/// softmax gives them ~0 weight; `None` when there is no padding.
+fn padding_mask(function_ids: &[usize], batch: usize, seq: usize) -> Option<Var> {
+    if !function_ids.contains(&PAD_ID) {
+        return None;
+    }
+    let mut data = vec![0.0f32; batch * seq * seq];
+    for b in 0..batch {
+        for j in 0..seq {
+            if function_ids[b * seq + j] == PAD_ID {
+                for i in 0..seq {
+                    data[b * seq * seq + i * seq + j] = -1e9;
+                }
+            }
+        }
+    }
+    Some(Var::new(Tensor::new(data, vec![batch, seq, seq]), false))
+}
+
+impl BibeModel {
 
     /// Collect all trainable parameters for the optimizer.
     pub fn parameters(&self) -> Vec<Var> {
@@ -154,6 +180,25 @@ mod tests {
         let out = model.forward(&ids, &aux, 2, 6, false);
         // [batch, seq, d_model]
         assert_eq!(out.hidden.tensor().shape(), &[2, 6, 16]);
+    }
+
+    #[test]
+    fn test_padding_keys_get_no_attention() {
+        // 3 real tokens then 3 padding (id 0). Padded key columns should
+        // receive ~0 attention in the attribution map.
+        let model = BibeModel::new(&tiny_config());
+        let ids = vec![1usize, 2, 3, 0, 0, 0];
+        let aux = Var::new(Tensor::zeros(&[1, 6, 4]), false);
+        let out = model.forward(&ids, &aux, 1, 6, false);
+        for i in 0..6 {
+            for pad_j in 3..6 {
+                assert!(
+                    out.attribution.get(&[0, i, pad_j]) < 1e-4,
+                    "query {i} attends {} to padded key {pad_j}",
+                    out.attribution.get(&[0, i, pad_j])
+                );
+            }
+        }
     }
 
     #[test]

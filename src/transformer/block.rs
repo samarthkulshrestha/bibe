@@ -35,11 +35,11 @@ impl TransformerBlock {
 
     /// Forward pass. Returns the block output and the attention weights from
     /// the self-attention sub-layer.
-    pub fn forward(&self, x: &Var, training: bool) -> (Var, Var) {
+    pub fn forward(&self, x: &Var, training: bool, mask: Option<&Var>) -> (Var, Var) {
         // Attention sub-layer (pre-norm + residual).
         let x_norm = self.norm1.forward(x);
         let (attn_out, attn_weights) =
-            self.attention.forward(&x_norm, &x_norm, &x_norm, None);
+            self.attention.forward(&x_norm, &x_norm, &x_norm, mask);
         let h = x.add(&self.dropout.forward(&attn_out, training));
 
         // Feed-forward sub-layer (pre-norm + residual).
@@ -69,7 +69,7 @@ mod tests {
     fn test_output_shape_preserved() {
         let block = TransformerBlock::new(32, 4, 64, 0.0);
         let x = Var::new(Tensor::randn(&[2, 6, 32]), false);
-        let (y, _attn) = block.forward(&x, false);
+        let (y, _attn) = block.forward(&x, false, None);
         assert_eq!(y.tensor().shape(), &[2, 6, 32]);
     }
 
@@ -77,7 +77,7 @@ mod tests {
     fn test_attention_weights_shape() {
         let block = TransformerBlock::new(32, 4, 64, 0.0);
         let x = Var::new(Tensor::randn(&[2, 6, 32]), false);
-        let (_y, attn) = block.forward(&x, false);
+        let (_y, attn) = block.forward(&x, false, None);
         // [batch * num_heads, seq, seq]
         assert_eq!(attn.tensor().shape(), &[8, 6, 6]);
     }
@@ -86,7 +86,7 @@ mod tests {
     fn test_transforms_input() {
         let block = TransformerBlock::new(16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[1, 4, 16]), false);
-        let (y, _attn) = block.forward(&x, false);
+        let (y, _attn) = block.forward(&x, false, None);
         let differs = x
             .tensor()
             .data
@@ -100,7 +100,7 @@ mod tests {
     fn test_output_is_finite() {
         let block = TransformerBlock::new(16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[2, 5, 16]), false);
-        let (y, _attn) = block.forward(&x, false);
+        let (y, _attn) = block.forward(&x, false, None);
         assert!(y.tensor().data.iter().all(|v| v.is_finite()), "output has NaN/Inf");
     }
 
@@ -108,7 +108,7 @@ mod tests {
     fn test_all_parameters_receive_gradients() {
         let block = TransformerBlock::new(16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[2, 4, 16]), true);
-        let (y, _attn) = block.forward(&x, true);
+        let (y, _attn) = block.forward(&x, true, None);
         let loss = y.sum();
         loss.backward();
 

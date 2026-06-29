@@ -34,12 +34,12 @@ impl TransformerEncoder {
 
     /// Forward pass through every block. Returns the normalized output and the
     /// self-attention weights from each layer (in layer order).
-    pub fn forward(&self, x: &Var, training: bool) -> (Var, Vec<Var>) {
+    pub fn forward(&self, x: &Var, training: bool, mask: Option<&Var>) -> (Var, Vec<Var>) {
         let mut hidden = x.clone();
         let mut attn_weights = Vec::with_capacity(self.layers.len());
 
         for layer in &self.layers {
-            let (out, attn) = layer.forward(&hidden, training);
+            let (out, attn) = layer.forward(&hidden, training, mask);
             hidden = out;
             attn_weights.push(attn);
         }
@@ -78,7 +78,7 @@ mod tests {
     fn test_output_shape_preserved() {
         let enc = TransformerEncoder::new(4, 32, 4, 64, 0.0);
         let x = Var::new(Tensor::randn(&[2, 6, 32]), false);
-        let (y, _attn) = enc.forward(&x, false);
+        let (y, _attn) = enc.forward(&x, false, None);
         assert_eq!(y.tensor().shape(), &[2, 6, 32]);
     }
 
@@ -86,7 +86,7 @@ mod tests {
     fn test_collects_attention_per_layer() {
         let enc = TransformerEncoder::new(4, 32, 4, 64, 0.0);
         let x = Var::new(Tensor::randn(&[2, 6, 32]), false);
-        let (_y, attn) = enc.forward(&x, false);
+        let (_y, attn) = enc.forward(&x, false, None);
         assert_eq!(attn.len(), 4, "expected one attention map per layer");
         for a in &attn {
             assert_eq!(a.tensor().shape(), &[8, 6, 6]);
@@ -99,7 +99,7 @@ mod tests {
         // mean ~0 and variance ~1.
         let enc = TransformerEncoder::new(3, 16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[2, 5, 16]), false);
-        let (y, _attn) = enc.forward(&x, false);
+        let (y, _attn) = enc.forward(&x, false, None);
         for (mean, var) in row_stats(&y.tensor(), 2 * 5, 16) {
             assert!(mean.abs() < 1e-3, "row mean not ~0: {mean}");
             assert!((var - 1.0).abs() < 1e-2, "row var not ~1: {var}");
@@ -110,7 +110,7 @@ mod tests {
     fn test_output_is_finite() {
         let enc = TransformerEncoder::new(4, 16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[2, 5, 16]), false);
-        let (y, _attn) = enc.forward(&x, false);
+        let (y, _attn) = enc.forward(&x, false, None);
         assert!(y.tensor().data.iter().all(|v| v.is_finite()), "output has NaN/Inf");
     }
 
@@ -120,7 +120,7 @@ mod tests {
         // parameters without vanishing to nothing.
         let enc = TransformerEncoder::new(4, 16, 2, 32, 0.0);
         let x = Var::new(Tensor::randn(&[2, 4, 16]), true);
-        let (y, _attn) = enc.forward(&x, true);
+        let (y, _attn) = enc.forward(&x, true, None);
         let loss = y.sum();
         loss.backward();
 
