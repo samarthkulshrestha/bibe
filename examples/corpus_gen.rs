@@ -56,7 +56,10 @@ fn program(rng: &mut StdRng, anomalous: bool) -> String {
     // Provided by the instrumentation shim; records the object (real pointer
     // address) the current function touches.
     s.push_str("void bibe_obj_event(void *p);\n\n");
-    s.push_str("char *allocate(void) { char *p = (char *)malloc(16); bibe_obj_event(p); return p; }\n");
+    // allocate does not emit an object event: for use-after-free attribution
+    // the cause is the free, so we link the free/use of an object but not its
+    // allocation (which would otherwise be a same-object competitor).
+    s.push_str("char *allocate(void) { return (char *)malloc(16); }\n");
     for i in 0..k {
         s.push_str(&format!("void free_{i}(char *p) {{ bibe_obj_event(p); free(p); }}\n"));
         s.push_str(&format!("char use_{i}(char *p) {{ bibe_obj_event(p); return p[0]; }}\n"));
