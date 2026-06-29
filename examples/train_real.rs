@@ -31,7 +31,10 @@ const EPOCHS: usize = 30;
 const SEED: u64 = 1234;
 
 fn main() {
-    let dir = std::env::args().nth(1).expect("usage: train_real <traces_dir>");
+    let dir = std::env::args().nth(1).expect("usage: train_real <traces_dir> [rollout]");
+    // Pass "rollout" to supervise the rollout directly instead of raw attention.
+    let supervise_rollout = std::env::args().nth(2).as_deref() == Some("rollout");
+    println!("attribution supervision target: {}", if supervise_rollout { "rollout" } else { "raw attention" });
 
     // Load and deterministically order all captured traces.
     let mut paths: Vec<_> = std::fs::read_dir(&dir)
@@ -60,11 +63,11 @@ fn main() {
     let vocab = Vocabulary::build(train, 1);
     println!("vocabulary size: {}", vocab.len());
 
-    let trainer = train_on(train, &vocab);
+    let trainer = train_on(train, &vocab, supervise_rollout);
     evaluate(trainer.model(), &vocab, test);
 }
 
-fn train_on(dataset: &[Trace], vocab: &Vocabulary) -> Trainer {
+fn train_on(dataset: &[Trace], vocab: &Vocabulary, supervise_rollout: bool) -> Trainer {
     let mut windows = Vec::new();
     for t in dataset {
         windows.extend(extract_windows(t, WINDOW, WINDOW));
@@ -92,6 +95,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary) -> Trainer {
         total_steps: EPOCHS * steps,
         grad_clip: 1.0,
         attribution_lambda: 1.0,
+        supervise_rollout,
         ..TrainConfig::default()
     };
     let mut trainer = Trainer::new(BibeModel::new(&config), train_cfg);

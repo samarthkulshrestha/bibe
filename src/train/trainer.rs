@@ -1,3 +1,4 @@
+use crate::attention::attention_rollout_var;
 use crate::autograd::Var;
 use crate::data::loader::Batch;
 use crate::data::DataLoader;
@@ -7,6 +8,7 @@ use crate::optim::{clip_grad_norm, lr_at, Adam};
 use crate::train::loss::attention_sparsity_loss;
 use crate::train::objective::{
     attribution_supervision_loss, batch_contrastive_loss, masked_focal_loss, masked_mean_pool,
+    rollout_supervision_loss,
 };
 
 /// Training hyperparameters.
@@ -22,6 +24,9 @@ pub struct TrainConfig {
     pub contrastive_temp: f32,
     /// Weight on the attention attribution-supervision loss.
     pub attribution_lambda: f32,
+    /// Supervise the differentiable rollout directly (true) rather than raw
+    /// last-layer attention (false). Aligns training with what is scored.
+    pub supervise_rollout: bool,
 }
 
 impl Default for TrainConfig {
@@ -41,6 +46,7 @@ impl Default for TrainConfig {
             contrastive_lambda: 0.0,
             contrastive_temp: 0.07,
             attribution_lambda: 0.0,
+            supervise_rollout: false,
         }
     }
 }
@@ -114,11 +120,21 @@ impl Trainer {
         // but only where the cause is a distinct event.
         if self.config.attribution_lambda > 0.0 {
             let supervised = supervised_triples(batch);
-            if let Some(a) = attribution_supervision_loss(
-                &out.attention_weights,
-                &supervised,
-                self.model.num_heads(),
-            ) {
+            let term = if self.config.supervise_rollout {
+                let rollout = attention_rollout_var(
+                    &out.attention_weights,
+                    self.model.num_heads(),
+                    batch.batch,
+                );
+                rollout_supervision_loss(&rollout, &supervised)
+            } else {
+                attribution_supervision_loss(
+                    &out.attention_weights,
+                    &supervised,
+                    self.model.num_heads(),
+                )
+            };
+            if let Some(a) = term {
                 loss = loss.add(&a.mul_scalar(self.config.attribution_lambda));
             }
         }
@@ -285,6 +301,15 @@ mod tests {
         let mut trainer = Trainer::new(BibeModel::new(&config), cfg);
         let stats = trainer.train_step(&batch);
         assert!(stats.loss.is_finite(), "loss not finite with attribution supervision");
+
+        // The rollout-supervision path must also produce a finite step.
+        let cfg2 = TrainConfig {
+            attribution_lambda: 0.5,
+            supervise_rollout: true,
+            ..TrainConfig::default()
+        };
+        let mut trainer2 = Trainer::new(BibeModel::new(&config), cfg2);
+        assert!(trainer2.train_step(&batch).loss.is_finite(), "rollout supervision not finite");
     }
 
     #[test]
