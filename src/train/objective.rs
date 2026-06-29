@@ -179,11 +179,109 @@ pub fn rollout_supervision_loss(rollout: &Var, supervised: &[(usize, usize, usiz
     total.map(|t| t.mul_scalar(1.0 / supervised.len() as f32))
 }
 
+/// Contrastive (margin) attribution supervision on a single layer's attention.
+///
+/// For each `(window, symptom, cause, candidate_mask)` entry, the symptom
+/// query's head-averaged attention is treated as scores over candidate source
+/// positions (the mask is 1.0 for eligible candidates — real, non-symptom
+/// positions — and 0.0 elsewhere), and a softmax cross-entropy ranks the cause
+/// above the competing candidates (the decoy frees):
+///
+/// ```text
+/// loss = log( Σ_{j∈cand} exp(a_j) ) - a_cause
+/// ```
+///
+/// Unlike rewarding only the cause's mass, this directly pushes the cause to
+/// out-rank decoys. `attn` is one layer's `[batch*num_heads, seq, seq]`.
+pub fn attribution_margin_loss(
+    attn: &Var,
+    num_heads: usize,
+    supervised: &[(usize, usize, usize, Vec<f32>)],
+) -> Option<Var> {
+    if supervised.is_empty() {
+        return None;
+    }
+
+    let shape = attn.tensor().shape().to_vec();
+    let seq = shape[1];
+    let flat = attn.reshape(&[shape[0] * seq, seq]);
+
+    let mut total: Option<Var> = None;
+    for (window, symptom, cause, mask) in supervised {
+        // Head-averaged attention row for the symptom query.
+        let mut row: Option<Var> = None;
+        for h in 0..num_heads {
+            let r = flat.select_row((window * num_heads + h) * seq + symptom);
+            row = Some(match row {
+                Some(acc) => acc.add(&r),
+                None => r,
+            });
+        }
+        let row = row.unwrap().mul_scalar(1.0 / num_heads as f32); // [seq]
+
+        // log Σ_{j in candidates} exp(a_j)  -  a_cause
+        let mask_var = Var::new(crate::tensor::Tensor::new(mask.clone(), vec![seq]), false);
+        let denom = row.exp().mul(&mask_var).sum().log();
+        let a_cause = row.reshape(&[seq, 1]).select_row(*cause);
+        let term = denom.sub(&a_cause);
+
+        total = Some(match total {
+            Some(t) => t.add(&term),
+            None => term,
+        });
+    }
+
+    total.map(|t| t.mul_scalar(1.0 / supervised.len() as f32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use super::super::loss::focal_loss;
     use crate::tensor::Tensor;
+
+    /// [heads, seq, seq] with query-row `q` set to `row` in every head.
+    fn attn_query_row(heads: usize, seq: usize, q: usize, row: &[f32]) -> Tensor {
+        let mut data = vec![0.0f32; heads * seq * seq];
+        for h in 0..heads {
+            for (j, &v) in row.iter().enumerate() {
+                data[h * seq * seq + q * seq + j] = v;
+            }
+        }
+        Tensor::new(data, vec![heads, seq, seq])
+    }
+
+    #[test]
+    fn test_margin_none_when_empty() {
+        let a = Var::new(Tensor::zeros(&[2, 3, 3]), false);
+        assert!(attribution_margin_loss(&a, 2, &[]).is_none());
+    }
+
+    #[test]
+    fn test_margin_lower_when_cause_outranks_decoy() {
+        // Symptom query 2, cause 0, decoy 1 (candidates {0,1}, symptom excluded).
+        let mask = vec![1.0, 1.0, 0.0];
+        let on_cause = Var::new(attn_query_row(2, 3, 2, &[0.9, 0.05, 0.05]), false);
+        let on_decoy = Var::new(attn_query_row(2, 3, 2, &[0.05, 0.9, 0.05]), false);
+
+        let lc = attribution_margin_loss(&on_cause, 2, &[(0, 2, 0, mask.clone())])
+            .unwrap()
+            .tensor()
+            .data[0];
+        let ld = attribution_margin_loss(&on_decoy, 2, &[(0, 2, 0, mask)])
+            .unwrap()
+            .tensor()
+            .data[0];
+        assert!(lc < ld, "cause-outranks-decoy should be lower: {lc} vs {ld}");
+    }
+
+    #[test]
+    fn test_margin_gradient_flows() {
+        let a = Var::new(attn_query_row(2, 3, 2, &[0.3, 0.4, 0.3]), true);
+        let loss = attribution_margin_loss(&a, 2, &[(0, 2, 0, vec![1.0, 1.0, 0.0])]).unwrap();
+        loss.backward();
+        assert!(a.grad().is_some());
+    }
 
     /// A [1, seq, seq] rollout whose query-row `q` is `row`, others uniform.
     fn rollout_with_query_row(seq: usize, q: usize, row: &[f32]) -> Tensor {

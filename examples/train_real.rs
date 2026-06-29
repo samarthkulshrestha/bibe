@@ -19,11 +19,9 @@ use bibe::autograd::Var;
 use bibe::data::{
     collate, extract_windows, parse_trace_file, DataLoader, Trace, Vocabulary, N_AUX,
 };
-use bibe::eval::{
-    attribution_row, auc_roc, head_averaged_query_row, hit_at_k, mrr, rank_by_score_desc,
-};
+use bibe::eval::{attribution_row, auc_roc, hit_at_k, mrr, rank_by_score_desc};
 use bibe::model::{BibeConfig, BibeModel};
-use bibe::train::{TrainConfig, Trainer};
+use bibe::train::{AttributionTarget, TrainConfig, Trainer};
 
 const WINDOW: usize = 64;
 const BATCH_SIZE: usize = 8;
@@ -31,10 +29,13 @@ const EPOCHS: usize = 30;
 const SEED: u64 = 1234;
 
 fn main() {
-    let dir = std::env::args().nth(1).expect("usage: train_real <traces_dir> [rollout]");
-    // Pass "rollout" to supervise the rollout directly instead of raw attention.
-    let supervise_rollout = std::env::args().nth(2).as_deref() == Some("rollout");
-    println!("attribution supervision target: {}", if supervise_rollout { "rollout" } else { "raw attention" });
+    let dir = std::env::args().nth(1).expect("usage: train_real <traces_dir> [raw|rollout|margin]");
+    let target = match std::env::args().nth(2).as_deref() {
+        Some("rollout") => AttributionTarget::Rollout,
+        Some("margin") => AttributionTarget::Margin,
+        _ => AttributionTarget::RawAttention,
+    };
+    println!("attribution supervision target: {target:?}");
 
     // Load and deterministically order all captured traces.
     let mut paths: Vec<_> = std::fs::read_dir(&dir)
@@ -63,11 +64,11 @@ fn main() {
     let vocab = Vocabulary::build(train, 1);
     println!("vocabulary size: {}", vocab.len());
 
-    let trainer = train_on(train, &vocab, supervise_rollout);
+    let trainer = train_on(train, &vocab, target);
     evaluate(trainer.model(), &vocab, test);
 }
 
-fn train_on(dataset: &[Trace], vocab: &Vocabulary, supervise_rollout: bool) -> Trainer {
+fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget) -> Trainer {
     let mut windows = Vec::new();
     for t in dataset {
         windows.extend(extract_windows(t, WINDOW, WINDOW));
@@ -95,7 +96,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, supervise_rollout: bool) -> T
         total_steps: EPOCHS * steps,
         grad_clip: 1.0,
         attribution_lambda: 1.0,
-        supervise_rollout,
+        attribution_target: target,
         ..TrainConfig::default()
     };
     let mut trainer = Trainer::new(BibeModel::new(&config), train_cfg);
@@ -113,11 +114,7 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     let mut all_scores = Vec::new();
     let mut all_labels = Vec::new();
     let (mut loc1, mut loc_mrr, mut n_anom) = (0usize, 0.0f32, 0usize);
-    // Attribution scored two ways: full rollout vs raw last-layer attention.
-    let (mut roll1, mut roll3, mut roll_mrr) = (0usize, 0usize, 0.0f32);
-    let (mut raw1, mut raw3, mut raw_mrr) = (0usize, 0usize, 0.0f32);
-    let mut n_att = 0usize;
-    let num_heads = model.num_heads();
+    let (mut att1, mut att3, mut att_mrr, mut n_att) = (0usize, 0usize, 0.0f32, 0usize);
 
     for trace in test {
         let windows = extract_windows(trace, WINDOW, WINDOW);
@@ -147,30 +144,19 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
             n_anom += 1;
         }
 
-        // Attribution: symptom -> cause, when the cause is distinct. Rank the
-        // candidate sources by rollout and by raw last-layer attention.
+        // Attribution: rank candidate sources by the model's attribution map
+        // (last-layer head-averaged attention) and find the cause.
         if let (Some(crash), Some(cause)) = (trace.root_cause(), trace.cause())
             && cause != crash
         {
-            let candidates: Vec<usize> = (0..batch.seq)
+            let row = attribution_row(&out.attribution, 0, crash);
+            let mut ranked: Vec<usize> = (0..batch.seq)
                 .filter(|&s| batch.pad_mask.data[s] > 0.5 && s != crash)
                 .collect();
-            let rank_by = |row: &[f32]| {
-                let mut c = candidates.clone();
-                c.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
-                c
-            };
-
-            let rollout = rank_by(&attribution_row(&out.attribution, 0, crash));
-            let last = out.attention_weights.last().unwrap().tensor();
-            let raw = rank_by(&head_averaged_query_row(&last, num_heads, 0, crash));
-
-            roll1 += hit_at_k(&rollout, cause, 1) as usize;
-            roll3 += hit_at_k(&rollout, cause, 3) as usize;
-            roll_mrr += mrr(&rollout, cause);
-            raw1 += hit_at_k(&raw, cause, 1) as usize;
-            raw3 += hit_at_k(&raw, cause, 3) as usize;
-            raw_mrr += mrr(&raw, cause);
+            ranked.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
+            att1 += hit_at_k(&ranked, cause, 1) as usize;
+            att3 += hit_at_k(&ranked, cause, 3) as usize;
+            att_mrr += mrr(&ranked, cause);
             n_att += 1;
         }
     }
@@ -185,13 +171,6 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     if n_att > 0 {
         let n = n_att as f32;
         println!("  attribution over {n_att} use-after-free (cause among decoy frees):");
-        println!(
-            "    rollout    Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}",
-            roll1 as f32 / n, roll3 as f32 / n, roll_mrr / n
-        );
-        println!(
-            "    raw attn   Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}",
-            raw1 as f32 / n, raw3 as f32 / n, raw_mrr / n
-        );
+        println!("    Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}", att1 as f32 / n, att3 as f32 / n, att_mrr / n);
     }
 }

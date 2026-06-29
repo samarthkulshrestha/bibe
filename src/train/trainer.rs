@@ -7,9 +7,21 @@ use crate::model::BibeModel;
 use crate::optim::{clip_grad_norm, lr_at, Adam};
 use crate::train::loss::attention_sparsity_loss;
 use crate::train::objective::{
-    attribution_supervision_loss, batch_contrastive_loss, masked_focal_loss, masked_mean_pool,
-    rollout_supervision_loss,
+    attribution_margin_loss, attribution_supervision_loss, batch_contrastive_loss,
+    masked_focal_loss, masked_mean_pool, rollout_supervision_loss,
 };
+
+/// Which attention signal the attribution supervision acts on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AttributionTarget {
+    /// Raw last-layer head-averaged attention (reward mass on the cause).
+    #[default]
+    RawAttention,
+    /// The differentiable cross-layer rollout.
+    Rollout,
+    /// Margin/contrastive: rank the cause above decoy candidates.
+    Margin,
+}
 
 /// Training hyperparameters.
 pub struct TrainConfig {
@@ -24,9 +36,8 @@ pub struct TrainConfig {
     pub contrastive_temp: f32,
     /// Weight on the attention attribution-supervision loss.
     pub attribution_lambda: f32,
-    /// Supervise the differentiable rollout directly (true) rather than raw
-    /// last-layer attention (false). Aligns training with what is scored.
-    pub supervise_rollout: bool,
+    /// Which attention signal the attribution supervision acts on.
+    pub attribution_target: AttributionTarget,
 }
 
 impl Default for TrainConfig {
@@ -46,7 +57,7 @@ impl Default for TrainConfig {
             contrastive_lambda: 0.0,
             contrastive_temp: 0.07,
             attribution_lambda: 0.0,
-            supervise_rollout: false,
+            attribution_target: AttributionTarget::RawAttention,
         }
     }
 }
@@ -120,19 +131,24 @@ impl Trainer {
         // but only where the cause is a distinct event.
         if self.config.attribution_lambda > 0.0 {
             let supervised = supervised_triples(batch);
-            let term = if self.config.supervise_rollout {
-                let rollout = attention_rollout_var(
-                    &out.attention_weights,
-                    self.model.num_heads(),
-                    batch.batch,
-                );
-                rollout_supervision_loss(&rollout, &supervised)
-            } else {
-                attribution_supervision_loss(
-                    &out.attention_weights,
-                    &supervised,
-                    self.model.num_heads(),
-                )
+            let heads = self.model.num_heads();
+            let term = match self.config.attribution_target {
+                AttributionTarget::RawAttention => {
+                    attribution_supervision_loss(&out.attention_weights, &supervised, heads)
+                }
+                AttributionTarget::Rollout => {
+                    let rollout =
+                        attention_rollout_var(&out.attention_weights, heads, batch.batch);
+                    rollout_supervision_loss(&rollout, &supervised)
+                }
+                AttributionTarget::Margin => {
+                    let masked: Vec<(usize, usize, usize, Vec<f32>)> = supervised
+                        .iter()
+                        .map(|&(w, sym, cause)| (w, sym, cause, candidate_mask(batch, w, sym)))
+                        .collect();
+                    let last = out.attention_weights.last().unwrap();
+                    attribution_margin_loss(last, heads, &masked)
+                }
             };
             if let Some(a) = term {
                 loss = loss.add(&a.mul_scalar(self.config.attribution_lambda));
@@ -168,6 +184,17 @@ fn window_anomaly_flags(batch: &Batch) -> Vec<bool> {
     (0..batch.batch)
         .map(|b| {
             (0..batch.seq).any(|s| batch.labels.data[b * batch.seq + s] > 0.5)
+        })
+        .collect()
+}
+
+/// Candidate-source mask `[seq]` for a window's symptom query: 1.0 for real
+/// positions other than the symptom itself, 0.0 elsewhere.
+fn candidate_mask(batch: &Batch, window: usize, symptom: usize) -> Vec<f32> {
+    (0..batch.seq)
+        .map(|s| {
+            let real = batch.pad_mask.data[window * batch.seq + s] > 0.5;
+            if real && s != symptom { 1.0 } else { 0.0 }
         })
         .collect()
 }
@@ -302,14 +329,16 @@ mod tests {
         let stats = trainer.train_step(&batch);
         assert!(stats.loss.is_finite(), "loss not finite with attribution supervision");
 
-        // The rollout-supervision path must also produce a finite step.
-        let cfg2 = TrainConfig {
-            attribution_lambda: 0.5,
-            supervise_rollout: true,
-            ..TrainConfig::default()
-        };
-        let mut trainer2 = Trainer::new(BibeModel::new(&config), cfg2);
-        assert!(trainer2.train_step(&batch).loss.is_finite(), "rollout supervision not finite");
+        // The rollout and margin supervision paths must also stay finite.
+        for target in [AttributionTarget::Rollout, AttributionTarget::Margin] {
+            let cfg2 = TrainConfig {
+                attribution_lambda: 0.5,
+                attribution_target: target,
+                ..TrainConfig::default()
+            };
+            let mut t2 = Trainer::new(BibeModel::new(&config), cfg2);
+            assert!(t2.train_step(&batch).loss.is_finite(), "{target:?} supervision not finite");
+        }
     }
 
     #[test]
