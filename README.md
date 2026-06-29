@@ -51,7 +51,7 @@ On a **real** corpus — C programs compiled with AddressSanitizer + function in
 - **Localization** (which event is the symptom?): Hit@1 ≈ 0.96
 - **Attribution** (which earlier `free` caused it, among decoys?): the true cause is always in the top 3 (Hit@3 = 1.0), and — once events carry an object identity linking each use to its allocation — the exact culprit is ranked first ~63% of the time (up from ~46% without it).
 
-Detection and localization are strong; **pinpointing the exact root cause among decoys is improving but unsolved.** Giving the model the object identity that ties a use to its free (the real-world analog: the allocation address) was the change that moved attribution, confirming the bottleneck is information, not the loss. The traces are real executions, but of small templated programs — generalization to real applications is future work.
+Detection and localization are strong; **pinpointing the exact root cause among decoys is improving but unsolved.** Giving the model an object identity that ties a use to its free — derived from the real allocation address captured at runtime — was the change that moved attribution, confirming the bottleneck is information, not the loss. (Linking the allocation too makes it a same-object competitor and *hurts*, so only the dealloc/use are linked.) The traces are real executions, but of small templated programs — generalization to real applications is future work.
 
 ## Why Build From Scratch?
 
