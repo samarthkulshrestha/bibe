@@ -19,9 +19,28 @@ pub struct Batch {
     pub labels: Tensor,
     /// Per-position causal-event labels `[batch, seq]` (1.0 at the cause).
     pub cause: Tensor,
+    /// Per-position object id `[batch*seq]`, tying events on the same object
+    /// together (0 = no object). See [`object_id_from_name`].
+    pub object_ids: Vec<usize>,
     pub pad_mask: Tensor,
     pub batch: usize,
     pub seq: usize,
+}
+
+/// Derive an object id from a function name.
+///
+/// A stopgap for the templated corpus: `free_N` / `use_N` call sites map to
+/// object `N + 1` (so events touching the same object share an id), everything
+/// else to 0. Real captures would assign object ids from allocation addresses.
+pub fn object_id_from_name(name: &str) -> usize {
+    for prefix in ["free_", "use_"] {
+        if let Some(suffix) = name.strip_prefix(prefix)
+            && let Ok(n) = suffix.parse::<usize>()
+        {
+            return n + 1;
+        }
+    }
+    0
 }
 
 /// Encode and stack a slice of equal-length windows into a [`Batch`].
@@ -30,6 +49,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
     let seq = if batch > 0 { windows[0].events.len() } else { 0 };
 
     let mut function_ids = Vec::with_capacity(batch * seq);
+    let mut object_ids = Vec::with_capacity(batch * seq);
     let mut aux = Vec::with_capacity(batch * seq * N_AUX);
     let mut labels = Vec::with_capacity(batch * seq);
     let mut cause = Vec::with_capacity(batch * seq);
@@ -38,6 +58,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
     for w in windows {
         for (i, ev) in w.events.iter().enumerate() {
             function_ids.push(vocab.encode(&ev.function));
+            object_ids.push(object_id_from_name(&ev.function));
             aux.extend_from_slice(&aux_features(ev));
             labels.push(w.labels[i]);
             cause.push(w.cause_labels[i]);
@@ -50,6 +71,7 @@ pub fn collate(windows: &[TraceWindow], vocab: &Vocabulary) -> Batch {
         aux: Tensor::new(aux, vec![batch, seq, N_AUX]),
         labels: Tensor::new(labels, vec![batch, seq]),
         cause: Tensor::new(cause, vec![batch, seq]),
+        object_ids,
         pad_mask: Tensor::new(mask, vec![batch, seq]),
         batch,
         seq,
@@ -159,6 +181,29 @@ mod tests {
         assert_eq!(b.labels.data, vec![0.0, 0.0, 1.0, 0.0]);
         // first three real, last padded.
         assert_eq!(b.pad_mask.data, vec![1.0, 1.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn test_object_id_from_name() {
+        assert_eq!(object_id_from_name("free_3"), 4);
+        assert_eq!(object_id_from_name("use_3"), 4); // same object as free_3
+        assert_eq!(object_id_from_name("free_0"), 1);
+        assert_eq!(object_id_from_name("free"), 0);
+        assert_eq!(object_id_from_name("work_2"), 0);
+        assert_eq!(object_id_from_name("main"), 0);
+    }
+
+    #[test]
+    fn test_collate_object_ids_link_same_object() {
+        let trace = Trace {
+            events: vec![event("use_1", 0), event("work_0", 0), event("free_1", 0)],
+            label: TraceLabel::Anomalous { root_cause: 0, cause: 2 },
+        };
+        let windows = extract_windows(&trace, 4, 4);
+        let vocab = Vocabulary::build(std::slice::from_ref(&trace), 1);
+        let b = collate(&windows, &vocab);
+        // use_1 and free_1 share object id 2; work_0 and padding are 0.
+        assert_eq!(b.object_ids, vec![2, 0, 2, 0]);
     }
 
     #[test]
