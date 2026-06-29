@@ -49,9 +49,9 @@ On a **real** corpus — C programs compiled with AddressSanitizer + function in
 
 - **Detection** (is there a use-after-free?): AUC-ROC ≈ 0.997
 - **Localization** (which event is the symptom?): Hit@1 ≈ 0.96
-- **Attribution** (which earlier `free` caused it, among decoys?): the true cause is always in the top 3 (Hit@3 = 1.0), and — once events carry an object identity linking each use to its allocation — the exact culprit is ranked first ~63% of the time (up from ~46% without it).
+- **Attribution** (which earlier `free` caused it, among decoys?): with an object-aware attention bias, the exact culprit is ranked first ~99–100% of the time (Hit@1 ≈ 0.99–1.0). Without object information it was ~46%; an object-id embedding lifted it to ~61%; a direct same-object attention bias closed the gap.
 
-Detection and localization are strong; **pinpointing the exact root cause among decoys is improving but unsolved.** Giving the model an object identity that ties a use to its free — derived from the real allocation address captured at runtime — was the change that moved attribution, confirming the bottleneck is information, not the loss. (Linking the allocation too makes it a same-object competitor and *hurts*, so only the dealloc/use are linked.) The traces are real executions, but of small templated programs — generalization to real applications is future work.
+Detection, localization, and attribution are all strong on this benchmark. The key to attribution was giving the model an **object identity** — derived from the real allocation address captured at runtime — that ties a use to its free, and then a **same-object attention bias** so the model structurally favors it. (Linking the allocation too makes it a same-object competitor and hurts, so only the dealloc/use are linked.) The traces are real executions, but of small templated programs — generalization to real applications is the main open question.
 
 ## Why Build From Scratch?
 

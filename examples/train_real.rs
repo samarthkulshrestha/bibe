@@ -35,8 +35,9 @@ fn main() {
         Some("margin") => AttributionTarget::Margin,
         _ => AttributionTarget::RawAttention,
     };
-    // Optional 3rd arg: object-aware attention bias strength (default 0).
-    let object_bias: f32 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    // Optional 3rd arg: object-aware attention bias strength (default 4, which
+    // makes attribution near-perfect; pass 0 to disable).
+    let object_bias: f32 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(4.0);
     println!("attribution supervision target: {target:?}, object_bias: {object_bias}");
 
     // Load and deterministically order all captured traces.
