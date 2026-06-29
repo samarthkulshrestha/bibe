@@ -1,4 +1,4 @@
-use crate::attention::attention_rollout;
+use crate::attention::head_average;
 use crate::autograd::Var;
 use crate::nn::{Embedding, Linear, PositionalEncoding};
 use crate::tensor::Tensor;
@@ -26,7 +26,8 @@ pub struct ModelOutput {
     pub hidden: Var,
     /// Self-attention weights from each layer, shape `[batch*heads, seq, seq]`.
     pub attention_weights: Vec<Var>,
-    /// Attention-rollout attribution, shape `[batch, seq, seq]`.
+    /// Attribution map (last layer's head-averaged attention), shape
+    /// `[batch, seq, seq]`: how much each source influences each query.
     pub attribution: Tensor,
 }
 
@@ -84,10 +85,10 @@ impl BibeModel {
         let (hidden, attention_weights) = self.encoder.forward(&x, training);
         let anomaly_scores = self.anomaly_head.forward(&hidden);
 
-        // Attribution via attention rollout over the collected weights.
-        let attn_tensors: Vec<Tensor> =
-            attention_weights.iter().map(|a| a.tensor()).collect();
-        let attribution = attention_rollout(&attn_tensors, self.num_heads);
+        // Attribution from the last layer's head-averaged attention, which
+        // pinpoints causes more sharply than the cross-layer rollout.
+        let last = attention_weights.last().unwrap().tensor();
+        let attribution = head_average(&last, self.num_heads, batch);
 
         ModelOutput {
             anomaly_scores,

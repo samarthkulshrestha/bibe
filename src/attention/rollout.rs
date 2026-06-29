@@ -33,6 +33,29 @@ pub fn attention_rollout_var(attention_weights: &[Var], num_heads: usize, batch:
     acc.unwrap()
 }
 
+/// Average a single layer's attention `[batch*num_heads, seq, seq]` over heads
+/// into `[batch, seq, seq]`. Rows remain valid distributions (sum to 1).
+///
+/// Used as the model's attribution map: a single layer's head-averaged
+/// attention pinpoints causes more sharply than the cross-layer rollout, which
+/// the residual mixing blurs.
+pub fn head_average(attn: &Tensor, num_heads: usize, batch: usize) -> Tensor {
+    let seq = attn.shape()[1];
+    let mut data = vec![0.0f32; batch * seq * seq];
+    for b in 0..batch {
+        for i in 0..seq {
+            for j in 0..seq {
+                let mut acc = 0.0;
+                for h in 0..num_heads {
+                    acc += attn.get(&[b * num_heads + h, i, j]);
+                }
+                data[b * seq * seq + i * seq + j] = acc / num_heads as f32;
+            }
+        }
+    }
+    Tensor::new(data, vec![batch, seq, seq])
+}
+
 /// A `[1, seq, seq]` tensor with `scale` on the diagonal (broadcasts over batch).
 fn scaled_identity(seq: usize, scale: f32) -> Tensor {
     let mut data = vec![0.0f32; seq * seq];
@@ -178,6 +201,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_head_average() {
+        // 1 batch, 2 heads, seq 2. Head 0 query0 = [0.8,0.2], head 1 = [0.4,0.6].
+        let mut data = vec![0.0f32; 2 * 2 * 2];
+        data[0] = 0.8;
+        data[1] = 0.2;
+        data[4] = 0.4;
+        data[5] = 0.6;
+        let attn = Tensor::new(data, vec![2, 2, 2]);
+        let avg = head_average(&attn, 2, 1);
+        assert_eq!(avg.shape(), &[1, 2, 2]);
+        assert!((avg.get(&[0, 0, 0]) - 0.6).abs() < 1e-6);
+        assert!((avg.get(&[0, 0, 1]) - 0.4).abs() < 1e-6);
+        // Row still sums to 1.
+        assert!((avg.get(&[0, 0, 0]) + avg.get(&[0, 0, 1]) - 1.0).abs() < 1e-6);
     }
 
     #[test]
