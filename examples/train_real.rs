@@ -119,7 +119,12 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     let mut all_scores = Vec::new();
     let mut all_labels = Vec::new();
     let (mut loc1, mut loc_mrr, mut n_anom) = (0usize, 0.0f32, 0usize);
-    let (mut att1, mut att3, mut att_mrr, mut n_att) = (0usize, 0usize, 0.0f32, 0usize);
+    // Attribution scored for the model and two non-learned baselines:
+    // recency (most recent prior event) and same-object recency.
+    let mut model_score = Scorer::default();
+    let mut recency = Scorer::default();
+    let mut obj_recency = Scorer::default();
+    let mut n_att = 0usize;
 
     for trace in test {
         let windows = extract_windows(trace, WINDOW, WINDOW);
@@ -149,19 +154,35 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
             n_anom += 1;
         }
 
-        // Attribution: rank candidate sources by the model's attribution map
-        // (last-layer head-averaged attention) and find the cause.
+        // Attribution: rank candidate source events and find the cause, for the
+        // model and the two baselines.
         if let (Some(crash), Some(cause)) = (trace.root_cause(), trace.cause())
             && cause != crash
         {
-            let row = attribution_row(&out.attribution, 0, crash);
-            let mut ranked: Vec<usize> = (0..batch.seq)
+            let candidates: Vec<usize> = (0..batch.seq)
                 .filter(|&s| batch.pad_mask.data[s] > 0.5 && s != crash)
                 .collect();
-            ranked.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
-            att1 += hit_at_k(&ranked, cause, 1) as usize;
-            att3 += hit_at_k(&ranked, cause, 3) as usize;
-            att_mrr += mrr(&ranked, cause);
+
+            // Model: rank by the attribution map.
+            let row = attribution_row(&out.attribution, 0, crash);
+            let mut model_rank = candidates.clone();
+            model_rank.sort_by(|&a, &b| row[b].partial_cmp(&row[a]).unwrap());
+
+            // Recency: most recent (highest position) prior event first.
+            let mut rec_rank = candidates.clone();
+            rec_rank.sort_by(|&a, &b| b.cmp(&a));
+
+            // Same-object recency: same-object events (by recency) first.
+            let sym_obj = batch.object_ids[crash];
+            let mut obj_rank = candidates.clone();
+            obj_rank.sort_by_key(|&s| {
+                let same = sym_obj != 0 && batch.object_ids[s] == sym_obj;
+                (!same, std::cmp::Reverse(s))
+            });
+
+            model_score.add(&model_rank, cause);
+            recency.add(&rec_rank, cause);
+            obj_recency.add(&obj_rank, cause);
             n_att += 1;
         }
     }
@@ -174,8 +195,30 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         println!("  localize    MRR       {:.3}   ({n_anom} anomalous)", loc_mrr / n_anom as f32);
     }
     if n_att > 0 {
-        let n = n_att as f32;
-        println!("  attribution over {n_att} use-after-free (cause among decoy frees):");
-        println!("    Hit@1 {:.3}   Hit@3 {:.3}   MRR {:.3}", att1 as f32 / n, att3 as f32 / n, att_mrr / n);
+        println!("  attribution over {n_att} use-after-free (Hit@1 / Hit@3 / MRR):");
+        println!("    model              {}", model_score.report(n_att));
+        println!("    recency baseline   {}", recency.report(n_att));
+        println!("    same-obj recency   {}", obj_recency.report(n_att));
+    }
+}
+
+/// Accumulates Hit@1 / Hit@3 / MRR over a set of rankings.
+#[derive(Default)]
+struct Scorer {
+    hit1: usize,
+    hit3: usize,
+    mrr: f32,
+}
+
+impl Scorer {
+    fn add(&mut self, ranked: &[usize], target: usize) {
+        self.hit1 += hit_at_k(ranked, target, 1) as usize;
+        self.hit3 += hit_at_k(ranked, target, 3) as usize;
+        self.mrr += mrr(ranked, target);
+    }
+
+    fn report(&self, n: usize) -> String {
+        let n = n as f32;
+        format!("{:.3}   {:.3}   {:.3}", self.hit1 as f32 / n, self.hit3 as f32 / n, self.mrr / n)
     }
 }

@@ -75,14 +75,20 @@ fn program(rng: &mut StdRng, anomalous: bool) -> String {
         s.push_str(&format!("    char *ptr_{i} = allocate();\n    ptr_{i}[0] = 'A';\n"));
     }
 
-    // Per-pointer op queue, in the required order. (true = free op.)
+    // Per-pointer op queue, in required order (true = free). Each object gets
+    // several valid uses before its free; the victim adds one use AFTER its
+    // free (the bug). So the symptom's same-object events include many valid
+    // uses, and identifying the causal free needs object + is-free + order, not
+    // just "attend to the same object".
     let mut queues: Vec<Vec<(bool, usize)>> = (0..k)
         .map(|i| {
+            let n_uses = rng.random_range(1..=3);
+            let mut q: Vec<(bool, usize)> = (0..n_uses).map(|_| (false, i)).collect();
+            q.push((true, i)); // free
             if victim == Some(i) {
-                vec![(true, i), (false, i)] // free then use -> the bug
-            } else {
-                vec![(false, i), (true, i)] // use then free -> correct
+                q.push((false, i)); // use-after-free
             }
+            q
         })
         .collect();
 
