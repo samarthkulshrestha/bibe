@@ -124,6 +124,8 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     let mut model_score = Scorer::default();
     let mut recency = Scorer::default();
     let mut obj_recency = Scorer::default();
+    let mut obj_write_recency = Scorer::default();
+    let write_id = vocab.encode("write");
     let mut n_att = 0usize;
 
     for trace in test {
@@ -180,9 +182,19 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
                 (!same, std::cmp::Reverse(s))
             });
 
+            // Same-object write recency: same-object `write` events (by recency).
+            let mut obj_write_rank = candidates.clone();
+            obj_write_rank.sort_by_key(|&s| {
+                let same_write = sym_obj != 0
+                    && batch.object_ids[s] == sym_obj
+                    && batch.function_ids[s] == write_id;
+                (!same_write, std::cmp::Reverse(s))
+            });
+
             model_score.add(&model_rank, cause);
             recency.add(&rec_rank, cause);
             obj_recency.add(&obj_rank, cause);
+            obj_write_recency.add(&obj_write_rank, cause);
             n_att += 1;
         }
     }
@@ -199,6 +211,7 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         println!("    model              {}", model_score.report(n_att));
         println!("    recency baseline   {}", recency.report(n_att));
         println!("    same-obj recency   {}", obj_recency.report(n_att));
+        println!("    same-obj write     {}", obj_write_recency.report(n_att));
     }
 }
 

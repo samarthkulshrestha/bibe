@@ -1,11 +1,13 @@
 //! Generate synthetic "distal cause" traces where recency heuristics fail.
 //!
-//! Each object is allocated, `write`-n (the cause for the victim), then `read`
-//! several times (valid, same-object distractors), and the victim finally
-//! `crash`es (the symptom). So the most-recent same-object event before the
-//! crash is a *read distractor*, not the causal write — recency and
-//! same-object-recency baselines cannot find the cause. Sanitizers don't catch
-//! this class (no oracle), so labels are injected synthetically.
+//! Each object gets several `write`s and `read`s. Exactly one write is causal:
+//! the one immediately following a `trigger` event. The victim object later
+//! `crash`es (the symptom); its cause is that trigger-preceded write, which is
+//! neither the most-recent event, nor the most-recent same-object event, nor
+//! the most-recent same-object *write* — so recency, same-object-recency, and
+//! same-object-write baselines all fail. The model must learn the relational
+//! `trigger -> write` pattern. Sanitizers don't catch this class (no oracle),
+//! so labels are injected synthetically.
 //!
 //! Emits BiBE `.trace` files (with the object column) that
 //! `examples/train_real.rs` can train on and score against the baselines.
@@ -59,24 +61,35 @@ fn event(func: &str, ts: u64, object_id: u32) -> TraceEvent {
     }
 }
 
+/// One emission step: a run of consecutive `(function, object_id)` events kept
+/// adjacent through interleaving (so `trigger`->write stays together).
+type Step = Vec<(&'static str, u32)>;
+
+/// Steps for one object. Every object has a `trigger`->`write` step (its one
+/// causal-shaped write) plus benign writes/reads; only the victim crashes.
+fn object_steps(rng: &mut StdRng, obj: usize, is_victim: bool) -> Vec<Step> {
+    let oid = obj as u32 + 1;
+    let mut steps: Vec<Step> = vec![vec![("alloc", oid)], vec![("write", oid)], vec![("read", oid)]];
+    // The causal-shaped step: a trigger (no object) immediately before a write.
+    steps.push(vec![("trigger", 0), ("write", oid)]);
+    // Trailing benign writes/reads (distractors after the causal write).
+    for _ in 0..rng.random_range(1..=2) {
+        let f = if rng.random::<bool>() { "write" } else { "read" };
+        steps.push(vec![(f, oid)]);
+    }
+    steps.push(vec![("read", oid)]);
+    if is_victim {
+        steps.push(vec![("crash", oid)]);
+    }
+    steps
+}
+
 fn gen_trace(rng: &mut StdRng, anomalous: bool) -> Trace {
     let k = rng.random_range(2..=4);
     let victim = if anomalous { Some(rng.random_range(0..k)) } else { None };
 
-    // Per-object op queues. Object `i` uses object id `i + 1`. Each object is
-    // allocated, written once (the potential cause), then read a few times; the
-    // victim finally crashes.
-    let mut queues: Vec<Vec<&str>> = (0..k)
-        .map(|i| {
-            let reads = rng.random_range(1..=3);
-            let mut q = vec!["alloc", "write"];
-            q.extend(std::iter::repeat_n("read", reads));
-            if victim == Some(i) {
-                q.push("crash");
-            }
-            q
-        })
-        .collect();
+    let mut queues: Vec<Vec<Step>> =
+        (0..k).map(|i| object_steps(rng, i, victim == Some(i))).collect();
 
     let mut events: Vec<TraceEvent> = Vec::new();
     let (mut cause, mut symptom) = (0usize, 0usize);
@@ -87,21 +100,23 @@ fn gen_trace(rng: &mut StdRng, anomalous: bool) -> Trace {
         if ready.is_empty() {
             break;
         }
-        // Occasional unrelated filler (no object).
         if rng.random_range(0..10) < 4 {
             events.push(event("work", ts, 0));
             ts += 1;
         }
         let obj = ready[rng.random_range(0..ready.len())];
-        let func = queues[obj].remove(0);
-        if victim == Some(obj) && func == "write" {
-            cause = events.len();
+        let step = queues[obj].remove(0);
+        let is_causal_step = victim == Some(obj) && step.iter().any(|&(f, _)| f == "trigger");
+        for (func, oid) in step {
+            if is_causal_step && func == "write" {
+                cause = events.len(); // the trigger-preceded write is the cause
+            }
+            if func == "crash" {
+                symptom = events.len();
+            }
+            events.push(event(func, ts, oid));
+            ts += 1;
         }
-        if func == "crash" {
-            symptom = events.len();
-        }
-        events.push(event(func, ts, obj as u32 + 1));
-        ts += 1;
     }
 
     let label = match victim {
