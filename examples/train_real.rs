@@ -125,7 +125,10 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
     let mut recency = Scorer::default();
     let mut obj_recency = Scorer::default();
     let mut obj_write_recency = Scorer::default();
+    let mut trig_adjacent = Scorer::default();
+    let mut trig_window = Scorer::default();
     let write_id = vocab.encode("write");
+    let trigger_id = vocab.encode("trigger");
     let mut n_att = 0usize;
 
     for trace in test {
@@ -191,10 +194,43 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
                 (!same_write, std::cmp::Reverse(s))
             });
 
+            // Oracle rule for the adjacent distal generator (v1): same-object
+            // writes whose immediately-preceding event is a `trigger`, by
+            // recency. This is the rule the generator plants; it exposes the
+            // benchmark's circularity and MUST be reported next to the model.
+            let mut trig_adj_rank = candidates.clone();
+            trig_adj_rank.sort_by_key(|&s| {
+                let oracle = batch.function_ids[s] == write_id
+                    && batch.object_ids[s] == sym_obj
+                    && s > 0
+                    && batch.function_ids[s - 1] == trigger_id;
+                (!oracle, std::cmp::Reverse(s))
+            });
+
+            // Oracle rule for the gapped distal generator (v2): the first
+            // same-object write after the first same-object trigger.
+            let first_trig = (0..batch.seq).find(|&t| {
+                batch.pad_mask.data[t] > 0.5
+                    && batch.function_ids[t] == trigger_id
+                    && batch.object_ids[t] == sym_obj
+            });
+            let window_oracle = first_trig.and_then(|t| {
+                ((t + 1)..batch.seq).find(|&s| {
+                    batch.pad_mask.data[s] > 0.5
+                        && batch.function_ids[s] == write_id
+                        && batch.object_ids[s] == sym_obj
+                })
+            });
+            let mut trig_window_rank = candidates.clone();
+            trig_window_rank
+                .sort_by_key(|&s| (Some(s) != window_oracle, std::cmp::Reverse(s)));
+
             model_score.add(&model_rank, cause);
             recency.add(&rec_rank, cause);
             obj_recency.add(&obj_rank, cause);
             obj_write_recency.add(&obj_write_rank, cause);
+            trig_adjacent.add(&trig_adj_rank, cause);
+            trig_window.add(&trig_window_rank, cause);
             n_att += 1;
         }
     }
@@ -212,6 +248,8 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         println!("    recency baseline   {}", recency.report(n_att));
         println!("    same-obj recency   {}", obj_recency.report(n_att));
         println!("    same-obj write     {}", obj_write_recency.report(n_att));
+        println!("    trig-adjacent      {}", trig_adjacent.report(n_att));
+        println!("    trig-window        {}", trig_window.report(n_att));
     }
 }
 
