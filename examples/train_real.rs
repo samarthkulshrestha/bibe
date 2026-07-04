@@ -26,7 +26,6 @@ use bibe::train::{AttributionTarget, TrainConfig, Trainer};
 const WINDOW: usize = 64;
 const BATCH_SIZE: usize = 8;
 const EPOCHS: usize = 30;
-const SEED: u64 = 1234;
 
 fn main() {
     let dir = std::env::args().nth(1).expect("usage: train_real <traces_dir> [raw|rollout|margin]");
@@ -67,22 +66,47 @@ fn main() {
     let vocab = Vocabulary::build(train, 1);
     println!("vocabulary size: {}", vocab.len());
 
-    let trainer = train_on(train, &vocab, target, object_bias);
-    evaluate(trainer.model(), &vocab, test);
+    let causal = std::env::args().nth(4).as_deref() == Some("causal");
+    let seeds: Vec<u64> = std::env::args()
+        .nth(5)
+        .map(|s| s.split(',').map(|x| x.parse().expect("seed")).collect())
+        .unwrap_or_else(|| vec![7, 42, 99, 1234, 2025]);
+
+    let mut runs: Vec<Vec<(String, f32)>> = Vec::new();
+    for &seed in &seeds {
+        println!("\n=== seed {seed} ===");
+        let trainer = train_on(train, &vocab, target, object_bias, causal, seed);
+        runs.push(evaluate(trainer.model(), &vocab, test));
+    }
+
+    println!("\n=== aggregate over {} seeds (mean ± std) ===", seeds.len());
+    for (i, (name, _)) in runs[0].iter().enumerate() {
+        let xs: Vec<f32> = runs.iter().map(|r| r[i].1).collect();
+        let (m, s) = mean_std(&xs);
+        println!("  {name:<22} {m:.3} ± {s:.3}");
+    }
 }
 
-fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget, object_bias: f32) -> Trainer {
+fn train_on(
+    dataset: &[Trace],
+    vocab: &Vocabulary,
+    target: AttributionTarget,
+    object_bias: f32,
+    causal: bool,
+    seed: u64,
+) -> Trainer {
+    let _ = causal; // wired into BibeConfig by the causal-ablation task
     let mut windows = Vec::new();
     for t in dataset {
         windows.extend(extract_windows(t, WINDOW, WINDOW));
     }
-    let mut rng = StdRng::seed_from_u64(7);
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x5eed);
     windows.shuffle(&mut rng);
 
     let loader = DataLoader::new(windows, BATCH_SIZE);
     let steps = loader.num_batches();
 
-    bibe::seed(SEED);
+    bibe::seed(seed);
     let config = BibeConfig {
         vocab_size: vocab.len(),
         d_model: 64,
@@ -115,7 +139,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, target: AttributionTarget, ob
     trainer
 }
 
-fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
+fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(String, f32)> {
     let mut all_scores = Vec::new();
     let mut all_labels = Vec::new();
     let (mut loc1, mut loc_mrr, mut n_anom) = (0usize, 0.0f32, 0usize);
@@ -251,6 +275,35 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) {
         println!("    trig-adjacent      {}", trig_adjacent.report(n_att));
         println!("    trig-window        {}", trig_window.report(n_att));
     }
+
+    let mut metrics = vec![("detection_auc".to_string(), auc)];
+    if n_anom > 0 {
+        metrics.push(("localize_hit1".to_string(), loc1 as f32 / n_anom as f32));
+        metrics.push(("localize_mrr".to_string(), loc_mrr / n_anom as f32));
+    }
+    if n_att > 0 {
+        let n = n_att as f32;
+        for (name, s) in [
+            ("model", &model_score),
+            ("recency", &recency),
+            ("obj_recency", &obj_recency),
+            ("obj_write", &obj_write_recency),
+            ("trig_adjacent", &trig_adjacent),
+            ("trig_window", &trig_window),
+        ] {
+            metrics.push((format!("{name}_hit1"), s.hit1 as f32 / n));
+            metrics.push((format!("{name}_hit3"), s.hit3 as f32 / n));
+            metrics.push((format!("{name}_mrr"), s.mrr / n));
+        }
+    }
+    metrics
+}
+
+fn mean_std(xs: &[f32]) -> (f32, f32) {
+    let n = xs.len() as f32;
+    let m = xs.iter().sum::<f32>() / n;
+    let v = xs.iter().map(|x| (x - m).powi(2)).sum::<f32>() / n;
+    (m, v.sqrt())
 }
 
 /// Accumulates Hit@1 / Hit@3 / MRR over a set of rankings.
