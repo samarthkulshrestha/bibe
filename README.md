@@ -45,13 +45,31 @@ The full system is implemented from scratch in Rust and trains end-to-end. What 
 
 ### Results so far (honest)
 
-On a **real** corpus — C programs compiled with AddressSanitizer + function instrumentation, executed, and auto-labeled — where clean and buggy programs share the same set of `free`/`use` calls (so only execution *order* differs) and contain decoy frees:
+**Finding 1 (negative): simple heuristics solve sanitizer-catchable attribution.**
+On use-after-free — the one bug class with an automatic oracle (ASan) — the
+cause is *definitionally* the most-recent same-object event before the crash,
+so the one-line heuristic "attribute to the most-recent same-object event"
+scores Hit@1 = 1.0. The learned model scores ≈ 0.585, and reaches ≈ 0.99 only
+when the same-object heuristic is hand-injected into attention as an additive
+`object_bias` — an oracle prior wired in by hand, not a learned capability.
+ML adds no value over a trivial rule on UAF; UAF serves as a negative control.
 
-- **Detection** (is there a use-after-free?): AUC-ROC ≈ 0.997
-- **Localization** (which event is the symptom?): Hit@1 ≈ 0.96
-- **Attribution** (which earlier `free` caused it, among decoys?): with an object-aware attention bias, the exact culprit is ranked first ~99–100% of the time (Hit@1 ≈ 0.99–1.0). Without object information it was ~46%; an object-id embedding lifted it to ~61%; a direct same-object attention bias closed the gap.
+**Finding 2 (capability probe): cause-supervised attention partially recovers
+a planted relational pattern.** On synthetic distal-cause traces
+(`examples/synth_distal_gen.rs`), the model reaches Hit@1 = 0.537 ± 0.118
+(5 seeds) while recency-family baselines score 0.0–0.29 — but the generator's
+own oracle rule ("the same-object write immediately preceded by a `trigger`",
+`trig-adjacent` in `train_real.rs`) scores 1.000 ± 0.000, as any oracle rule
+must on rule-labeled synthetic data. The honest reading: the model partially
+learns a relational pattern from cause supervision alone, and never beats the
+best hand-coded rule. Detection (AUC ≈ 1.0) and localization (Hit@1 ≈ 1.0)
+are solved, but were never the hard part.
 
-Detection, localization, and attribution are all strong on this benchmark. The key to attribution was giving the model an **object identity** — derived from the real allocation address captured at runtime — that ties a use to its free, and then a **same-object attention bias** so the model structurally favors it. (Linking the allocation too makes it a same-object competitor and hurts, so only the dealloc/use are linked.) The traces are real executions, but of small templated programs — generalization to real applications is the main open question.
+Evaluated config: d_model 64, 4 heads, 2 layers, window 64, 240–800 traces —
+smaller than the design targets elsewhere in this README. The traces are real
+executions of small *templated* programs; generalization to real applications
+is untested and is the main open question. Full baseline ladders and per-seed
+variance live in `docs/results/`.
 
 ## Why Build From Scratch?
 
