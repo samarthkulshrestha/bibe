@@ -93,18 +93,15 @@ cargo test          # ~430 tests, including finite-difference gradient checks
 
 ### Run the experiments
 ```bash
-# Train on synthetic traces and report detection/localization/attribution
-cargo run --release --example train
+# The two canonical benchmarks (UAF negative control + distal v2 capability
+# probe), all baselines, 3 data seeds x 5 model seeds, logged to docs/results/
+sh scripts/bench.sh
 
-# Leave-one-out generalization study + contrastive-weight sweep
-cargo run --release --example ood_study
-
-# Capture REAL traces: instrument C programs, run them, label with ASan
-cargo run --example corpus_gen -- 240 instrumentation/out/corpus 99
-sh instrumentation/capture_corpus.sh instrumentation/out/corpus instrumentation/out/traces
-
-# Train and evaluate on the real captured traces
-cargo run --release --example train_real -- instrumentation/out/traces
+# Individual pieces:
+cargo run --release --example train       # synthetic demo + metrics
+cargo run --release --example ood_study   # leave-one-out generalization study
+cargo run --release --example train_real -- <traces_dir> [raw|rollout|margin] [object_bias] [bidi|causal] [seeds_csv]
+python3 baselines/lstm_attrib.py <traces_dir>   # learned LSTM baseline
 ```
 (AddressSanitizer requires a `clang` toolchain.)
 
