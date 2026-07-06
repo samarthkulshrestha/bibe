@@ -19,7 +19,7 @@ use bibe::autograd::Var;
 use bibe::data::{
     collate, extract_windows, parse_trace_file, DataLoader, Trace, Vocabulary, N_AUX,
 };
-use bibe::eval::{attribution_row, auc_roc, hit_at_k, mrr, rank_by_score_desc};
+use bibe::eval::{attribution_row, auc_roc, hit_at_k, mrr, rank_by_score_desc, Spectrum};
 use bibe::model::{BibeConfig, BibeModel};
 use bibe::train::{AttributionTarget, TrainConfig, Trainer};
 
@@ -72,11 +72,14 @@ fn main() {
         .map(|s| s.split(',').map(|x| x.parse().expect("seed")).collect())
         .unwrap_or_else(|| vec![7, 42, 99, 1234, 2025]);
 
+    // Spectrum FL baselines are fit on the train split's trace-level labels.
+    let spectrum = Spectrum::build(train, &vocab);
+
     let mut runs: Vec<Vec<(String, f32)>> = Vec::new();
     for &seed in &seeds {
         println!("\n=== seed {seed} ===");
         let trainer = train_on(train, &vocab, target, object_bias, causal, seed);
-        runs.push(evaluate(trainer.model(), &vocab, test));
+        runs.push(evaluate(trainer.model(), &vocab, &spectrum, test));
     }
 
     println!("\n=== aggregate over {} seeds (mean ± std) ===", seeds.len());
@@ -139,7 +142,12 @@ fn train_on(
     trainer
 }
 
-fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(String, f32)> {
+fn evaluate(
+    model: &BibeModel,
+    vocab: &Vocabulary,
+    spectrum: &Spectrum,
+    test: &[Trace],
+) -> Vec<(String, f32)> {
     let mut all_scores = Vec::new();
     let mut all_labels = Vec::new();
     let (mut loc1, mut loc_mrr, mut n_anom) = (0usize, 0.0f32, 0usize);
@@ -151,6 +159,8 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(Strin
     let mut obj_write_recency = Scorer::default();
     let mut trig_adjacent = Scorer::default();
     let mut trig_window = Scorer::default();
+    let mut ochiai_score = Scorer::default();
+    let mut tarantula_score = Scorer::default();
     let write_id = vocab.encode("write");
     let trigger_id = vocab.encode("trigger");
     let mut n_att = 0usize;
@@ -249,6 +259,27 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(Strin
             trig_window_rank
                 .sort_by_key(|&s| (Some(s) != window_oracle, std::cmp::Reverse(s)));
 
+            // Spectrum FL baselines: rank candidates by the suspiciousness of
+            // their function (train-split coverage stats), recency tie-break.
+            let mut ochiai_rank = candidates.clone();
+            ochiai_rank.sort_by(|&a, &b| {
+                spectrum
+                    .ochiai(batch.function_ids[b])
+                    .partial_cmp(&spectrum.ochiai(batch.function_ids[a]))
+                    .unwrap()
+                    .then(b.cmp(&a))
+            });
+            let mut tarantula_rank = candidates.clone();
+            tarantula_rank.sort_by(|&a, &b| {
+                spectrum
+                    .tarantula(batch.function_ids[b])
+                    .partial_cmp(&spectrum.tarantula(batch.function_ids[a]))
+                    .unwrap()
+                    .then(b.cmp(&a))
+            });
+            ochiai_score.add(&ochiai_rank, cause);
+            tarantula_score.add(&tarantula_rank, cause);
+
             model_score.add(&model_rank, cause);
             recency.add(&rec_rank, cause);
             obj_recency.add(&obj_rank, cause);
@@ -274,6 +305,8 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(Strin
         println!("    same-obj write     {}", obj_write_recency.report(n_att));
         println!("    trig-adjacent      {}", trig_adjacent.report(n_att));
         println!("    trig-window        {}", trig_window.report(n_att));
+        println!("    ochiai FL          {}", ochiai_score.report(n_att));
+        println!("    tarantula FL       {}", tarantula_score.report(n_att));
     }
 
     let mut metrics = vec![("detection_auc".to_string(), auc)];
@@ -290,6 +323,8 @@ fn evaluate(model: &BibeModel, vocab: &Vocabulary, test: &[Trace]) -> Vec<(Strin
             ("obj_write", &obj_write_recency),
             ("trig_adjacent", &trig_adjacent),
             ("trig_window", &trig_window),
+            ("ochiai", &ochiai_score),
+            ("tarantula", &tarantula_score),
         ] {
             metrics.push((format!("{name}_hit1"), s.hit1 as f32 / n));
             metrics.push((format!("{name}_hit3"), s.hit3 as f32 / n));
