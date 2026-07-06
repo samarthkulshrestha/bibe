@@ -75,11 +75,15 @@ From `docs/results/2026-07-03-distal-v1-oracle.md` (v1, adjacent):
 
 ## 5. Ablations
 
-- Bidirectional vs causal attention: the project's namesake mechanism,
-  tested here for the first time. All benchmark causes precede symptoms, so
-  backward-only attention may suffice. Decision gate: if causal ties bidi
-  within 1 std, the bidirectional framing is dropped from the title.
-  [pending: docs/results/2026-07-03-bidi-ablation.md]
+- Bidirectional vs causal attention (the namesake mechanism, tested for the
+  first time): **bidirectionality does not help — the causal model is better
+  on the mean** (bidi Hit@1 0.537 ± 0.118 vs causal 0.805 ± 0.235; stds
+  overlap, so we claim only "not better", not "worse"). All benchmark causes
+  precede symptoms, so backward-only attention suffices and the forward half
+  appears to add noise. **The decision gate fired: "bidirectional" is
+  dropped from the title and claims.** The future-events motivation remains
+  an untested hypothesis no current benchmark exercises.
+  (docs/results/2026-07-03-bidi-ablation.md)
 - Object bias 0/4/8 across corpora: reported as an injected relational
   prior / oracle upper bound.
   [pending: docs/results/2026-07-03-object-bias-matrix.md]
