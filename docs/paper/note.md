@@ -67,11 +67,19 @@ From `docs/results/2026-07-03-distal-v1-oracle.md` (v1, adjacent):
   construction. The v1 construction additionally hid its marker from the
   same-object baselines (`trigger` carried object id 0) — we report this as
   a cautionary tale about self-refereed benchmarks.
-- v2 (gapped) removes the hidden token and breaks adjacency; the oracle
-  becomes trig-window. [pending: docs/results/2026-07-03-distal-v2-ladder.md]
+- v2 (gapped) removes the hidden token and breaks adjacency
+  (`docs/results/2026-07-03-distal-v2-ladder.md`): trig-adjacent collapses
+  to 0.026 ± 0.000; the new oracle trig-window is 1.000 ± 0.000 (as any
+  oracle must be on rule-labeled data); the transformer reaches
+  0.877 ± 0.068 — much higher than on v1 because the trigger now carries
+  the object id and is visible to the same-object attention prior — and
+  comparable to the bi-LSTM (0.856 ± 0.113). Recency-family and spectrum
+  baselines stay ≈ 0 at Hit@1.
 - The observation that survives: cause supervision alone recovers a planted
-  relational pattern well above the recency family — but below both the
-  oracle rule and a plain bi-LSTM.
+  relational pattern far above the recency family and spectrum FL — but
+  never above the oracle rule, and (on v1) below a plain bi-LSTM. On v2 the
+  two learned models tie within noise, which is itself evidence that the
+  bespoke architecture adds nothing over a generic sequence model.
 
 ## 5. Ablations
 
