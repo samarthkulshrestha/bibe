@@ -98,7 +98,6 @@ fn train_on(
     causal: bool,
     seed: u64,
 ) -> Trainer {
-    let _ = causal; // wired into BibeConfig by the causal-ablation task
     let mut windows = Vec::new();
     for t in dataset {
         windows.extend(extract_windows(t, WINDOW, WINDOW));
@@ -119,6 +118,7 @@ fn train_on(
         n_aux: N_AUX,
         num_objects: 8,
         object_bias,
+        causal,
         max_len: WINDOW,
         dropout_p: 0.0,
     };

@@ -19,6 +19,9 @@ pub struct BibeConfig {
     /// Additive attention bias favoring keys that share the query's object
     /// (0 disables it). Structurally points a use toward its same-object free.
     pub object_bias: f32,
+    /// Mask future keys (j > i), turning the encoder into a causal
+    /// (backward-only) model. Ablation for the bidirectionality claim.
+    pub causal: bool,
     pub max_len: usize,
     pub dropout_p: f32,
 }
@@ -50,6 +53,7 @@ pub struct BibeModel {
     anomaly_head: AnomalyHead,
     num_heads: usize,
     object_bias: f32,
+    causal: bool,
 }
 
 impl BibeModel {
@@ -70,6 +74,7 @@ impl BibeModel {
             anomaly_head: AnomalyHead::new(config.d_model),
             num_heads: config.num_heads,
             object_bias: config.object_bias,
+            causal: config.causal,
         }
     }
 
@@ -96,7 +101,8 @@ impl BibeModel {
 
         // Bidirectional encoder: padded keys masked out, and (optionally) keys
         // sharing the query's object favored. Per-position anomaly scores.
-        let mask = attention_bias(function_ids, object_ids, self.object_bias, batch, seq);
+        let mask =
+            attention_bias(function_ids, object_ids, self.object_bias, self.causal, batch, seq);
         let (hidden, attention_weights) = self.encoder.forward(&x, training, mask.as_ref());
         let anomaly_scores = self.anomaly_head.forward(&hidden);
 
@@ -129,11 +135,12 @@ fn attention_bias(
     function_ids: &[usize],
     object_ids: &[usize],
     object_bias: f32,
+    causal: bool,
     batch: usize,
     seq: usize,
 ) -> Option<Var> {
     let has_pad = function_ids.contains(&PAD_ID);
-    if !has_pad && object_bias == 0.0 {
+    if !has_pad && object_bias == 0.0 && !causal {
         return None;
     }
 
@@ -143,7 +150,7 @@ fn attention_bias(
             let oi = object_ids[b * seq + i];
             for j in 0..seq {
                 let cell = &mut data[b * seq * seq + i * seq + j];
-                if function_ids[b * seq + j] == PAD_ID {
+                if function_ids[b * seq + j] == PAD_ID || (causal && j > i) {
                     *cell = -1e9;
                 } else if object_bias != 0.0 && oi != 0 && oi == object_ids[b * seq + j] {
                     *cell = object_bias;
@@ -181,6 +188,7 @@ mod tests {
             n_aux: 4,
             num_objects: 8,
             object_bias: 0.0,
+            causal: false,
             max_len: 32,
             dropout_p: 0.0,
         }
@@ -218,7 +226,7 @@ mod tests {
         // seq 3: ids [1, 2, PAD], objects [5, 5, 0], bias 2.0.
         let fids = vec![1usize, 2, 0];
         let objs = vec![5usize, 5, 0];
-        let bias = attention_bias(&fids, &objs, 2.0, 1, 3).unwrap();
+        let bias = attention_bias(&fids, &objs, 2.0, false, 1, 3).unwrap();
         let t = bias.tensor();
         // Padded key column 2 is masked for every query.
         for i in 0..3 {
@@ -245,6 +253,28 @@ mod tests {
                     out.attribution.get(&[0, i, pad_j]) < 1e-4,
                     "query {i} attends {} to padded key {pad_j}",
                     out.attribution.get(&[0, i, pad_j])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_causal_mask_zeroes_future_attention() {
+        let mut config = tiny_config();
+        config.causal = true;
+        let model = BibeModel::new(&config);
+        // Non-PAD ids: with the causal mask, query 0's only valid key is
+        // itself, so a PAD at position 0 would leave it keyless.
+        let ids: Vec<usize> = (0..5).map(|i| i + 1).collect();
+        let obj: Vec<usize> = (0..5).map(|i| i % 8).collect();
+        let aux = Var::new(Tensor::randn(&[1, 5, 4]), false);
+        let out = model.forward(&ids, &obj, &aux, 1, 5, false);
+        for i in 0..5 {
+            for j in (i + 1)..5 {
+                assert!(
+                    out.attribution.get(&[0, i, j]) < 1e-4,
+                    "query {i} attends {} to future key {j}",
+                    out.attribution.get(&[0, i, j])
                 );
             }
         }

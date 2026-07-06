@@ -86,6 +86,7 @@ fn train_on(dataset: &[Trace], vocab: &Vocabulary, contrastive_lambda: f32) -> T
         n_aux: N_AUX,
         num_objects: 8,
         object_bias: 0.0,
+            causal: false,
         max_len: WINDOW,
         dropout_p: 0.0,
     };
