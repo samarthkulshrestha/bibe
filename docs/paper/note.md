@@ -41,12 +41,14 @@ capability probe and an honest account of its limits.
 ## 3. Negative control: use-after-free
 
 - The cause of a UAF is *definitionally* the most-recent same-object event
-  before the crash — the recency-on-object heuristic scores Hit@1 = 1.0.
-- Model without object bias: ≈ 0.585; ≈ 0.99 only with the same-object
-  attention bias hand-injected (`object_bias`) — an oracle prior, reported
-  as an upper bound, not a capability.
-- [pending: bias-matrix run → docs/results/2026-07-03-object-bias-matrix.md
-  for fresh mean ± std at bias 0/4/8]
+  before the crash — the recency-on-object heuristic scores Hit@1 = 1.000 on
+  our real ASan-labeled corpus (82 anomalous test traces).
+- The supervised model never matches it: 0.488 ± 0.145 without the object
+  bias, 0.824 ± 0.247 at bias 4, 0.893 ± 0.125 at bias 8 — and the bias is a
+  hand-injected same-object prior, i.e. the heuristic itself wired into
+  attention, reported as an oracle upper bound, not a capability.
+- Spectrum FL scores 0.000 here (every function appears in both classes);
+  plain recency 0.378. (docs/results/2026-07-03-object-bias-matrix.md)
 
 ## 4. Capability probe: synthetic distal causes (full rule ladder)
 
@@ -92,9 +94,19 @@ From `docs/results/2026-07-03-distal-v1-oracle.md` (v1, adjacent):
   dropped from the title and claims.** The future-events motivation remains
   an untested hypothesis no current benchmark exercises.
   (docs/results/2026-07-03-bidi-ablation.md)
-- Object bias 0/4/8 across corpora: reported as an injected relational
-  prior / oracle upper bound.
-  [pending: docs/results/2026-07-03-object-bias-matrix.md]
+- Object bias 0/4/8 across corpora (the injected relational prior),
+  model Hit@1:
+
+  | corpus     | bias 0        | bias 4        | bias 8        | best rule |
+  |------------|---------------|---------------|---------------|-----------|
+  | UAF real   | 0.488 ± 0.145 | 0.824 ± 0.247 | 0.893 ± 0.125 | 1.000     |
+  | distal v1  | 0.342 ± 0.160 | 0.537 ± 0.118 | 0.463 ± 0.209 | 1.000     |
+  | distal v2  | 0.441 ± 0.139 | 0.877 ± 0.068 | 0.913 ± 0.070 | 1.000     |
+
+  The prior contributes +0.34–0.47 Hit@1 where it aligns with the label
+  structure, *hurts* where it doesn't (v1, whose marker token carries no
+  object id), and the model never reaches the definitional/oracle rule in
+  any cell. (docs/results/2026-07-03-object-bias-matrix.md)
 
 ## 6. Real-bug pilot
 

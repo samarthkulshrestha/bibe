@@ -1,0 +1,157 @@
+attribution supervision target: RawAttention, object_bias: 8
+400 traces: 320 train (144 anomalous), 80 test
+vocabulary size: 8
+
+=== seed 7 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 89.9322
+  epoch  5  mean loss 3.3678
+  epoch 10  mean loss 2.2305
+  epoch 15  mean loss 1.6447
+  epoch 20  mean loss 1.2456
+  epoch 25  mean loss 1.1217
+  epoch 29  mean loss 1.0982
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.795   1.000   0.885
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== seed 42 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 85.4682
+  epoch  5  mean loss 1.6440
+  epoch 10  mean loss 1.2499
+  epoch 15  mean loss 1.0558
+  epoch 20  mean loss 0.9071
+  epoch 25  mean loss 0.8697
+  epoch 29  mean loss 0.8642
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.974   1.000   0.983
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== seed 99 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 95.4966
+  epoch  5  mean loss 3.5699
+  epoch 10  mean loss 1.7082
+  epoch 15  mean loss 1.1744
+  epoch 20  mean loss 0.9194
+  epoch 25  mean loss 0.8231
+  epoch 29  mean loss 0.8098
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.974   1.000   0.987
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== seed 1234 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 89.9013
+  epoch  5  mean loss 3.4065
+  epoch 10  mean loss 1.7249
+  epoch 15  mean loss 1.4045
+  epoch 20  mean loss 1.0227
+  epoch 25  mean loss 0.9463
+  epoch 29  mean loss 0.9363
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.949   1.000   0.970
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== seed 2025 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 96.4785
+  epoch  5  mean loss 5.2689
+  epoch 10  mean loss 2.5792
+  epoch 15  mean loss 1.5506
+  epoch 20  mean loss 1.2642
+  epoch 25  mean loss 1.1566
+  epoch 29  mean loss 1.1402
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.872   1.000   0.936
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== aggregate over 5 seeds (mean ± std) ===
+  detection_auc          1.000 ± 0.000
+  localize_hit1          1.000 ± 0.000
+  localize_mrr           1.000 ± 0.000
+  model_hit1             0.913 ± 0.070
+  model_hit3             1.000 ± 0.000
+  model_mrr              0.952 ± 0.038
+  recency_hit1           0.000 ± 0.000
+  recency_hit3           0.000 ± 0.000
+  recency_mrr            0.113 ± 0.000
+  obj_recency_hit1       0.000 ± 0.000
+  obj_recency_hit3       0.538 ± 0.000
+  obj_recency_mrr        0.295 ± 0.000
+  obj_write_hit1         0.333 ± 0.000
+  obj_write_hit3         1.000 ± 0.000
+  obj_write_mrr          0.658 ± 0.000
+  trig_adjacent_hit1     0.026 ± 0.000
+  trig_adjacent_hit3     0.026 ± 0.000
+  trig_adjacent_mrr      0.137 ± 0.000
+  trig_window_hit1       1.000 ± 0.000
+  trig_window_hit3       1.000 ± 0.000
+  trig_window_mrr        1.000 ± 0.000
+  ochiai_hit1            0.000 ± 0.000
+  ochiai_hit3            0.000 ± 0.000
+  ochiai_mrr             0.113 ± 0.000
+  tarantula_hit1         0.000 ± 0.000
+  tarantula_hit3         0.000 ± 0.000
+  tarantula_mrr          0.113 ± 0.000

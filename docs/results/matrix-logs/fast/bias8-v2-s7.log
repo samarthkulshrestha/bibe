@@ -1,0 +1,57 @@
+attribution supervision target: RawAttention, object_bias: 8
+400 traces: 320 train (144 anomalous), 80 test
+vocabulary size: 8
+
+=== seed 7 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 89.9322
+  epoch  5  mean loss 3.3678
+  epoch 10  mean loss 2.2305
+  epoch 15  mean loss 1.6447
+  epoch 20  mean loss 1.2456
+  epoch 25  mean loss 1.1217
+  epoch 29  mean loss 1.0982
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2529 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (39 anomalous)
+  attribution over 39 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.795   1.000   0.885
+    recency baseline   0.000   0.000   0.113
+    same-obj recency   0.000   0.538   0.295
+    same-obj write     0.333   1.000   0.658
+    trig-adjacent      0.026   0.026   0.137
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.113
+    tarantula FL       0.000   0.000   0.113
+
+=== aggregate over 1 seeds (mean ± std) ===
+  detection_auc          1.000 ± 0.000
+  localize_hit1          1.000 ± 0.000
+  localize_mrr           1.000 ± 0.000
+  model_hit1             0.795 ± 0.000
+  model_hit3             1.000 ± 0.000
+  model_mrr              0.885 ± 0.000
+  recency_hit1           0.000 ± 0.000
+  recency_hit3           0.000 ± 0.000
+  recency_mrr            0.113 ± 0.000
+  obj_recency_hit1       0.000 ± 0.000
+  obj_recency_hit3       0.538 ± 0.000
+  obj_recency_mrr        0.295 ± 0.000
+  obj_write_hit1         0.333 ± 0.000
+  obj_write_hit3         1.000 ± 0.000
+  obj_write_mrr          0.658 ± 0.000
+  trig_adjacent_hit1     0.026 ± 0.000
+  trig_adjacent_hit3     0.026 ± 0.000
+  trig_adjacent_mrr      0.137 ± 0.000
+  trig_window_hit1       1.000 ± 0.000
+  trig_window_hit3       1.000 ± 0.000
+  trig_window_mrr        1.000 ± 0.000
+  ochiai_hit1            0.000 ± 0.000
+  ochiai_hit3            0.000 ± 0.000
+  ochiai_mrr             0.113 ± 0.000
+  tarantula_hit1         0.000 ± 0.000
+  tarantula_hit3         0.000 ± 0.000
+  tarantula_mrr          0.113 ± 0.000
