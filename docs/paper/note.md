@@ -1,11 +1,10 @@
 # When Does Learned Root-Cause Attribution Beat a One-Line Heuristic?
 
 > Draft status: DRAFT (prose + Figure 1 + verified numbers). Every number is
-> copied, with its ± std, from a file in `docs/results/`. Distal-v2 and the
-> object-bias rows now carry data-seed variance (pooled over 3 corpus
-> realizations, L1); other corpora remain single-realization pending the same
-> sweep. Remaining before submission: LaTeX conversion and the UAF data-seed
-> sweep (running).
+> copied, with its ± std, from a file in `docs/results/`. UAF and distal-v2
+> now carry data-seed variance pooled over 3 corpus realizations (L1), and the
+> eval scores the crash-containing window with a drop count (L2). Remaining
+> before submission: LaTeX conversion and full prose for §§4–8.
 
 **Claim (the only claim):** For bug classes with an automatic oracle
 (sanitizer-catchable), the causal event is definitionally the most-recent
