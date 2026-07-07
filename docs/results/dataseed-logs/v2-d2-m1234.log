@@ -1,0 +1,59 @@
+attribution supervision target: RawAttention, object_bias: 4
+400 traces: 320 train (140 anomalous), 80 test
+vocabulary size: 8
+
+=== seed 1234 ===
+
+training 30 epochs x 40 batches:
+  epoch  0  mean loss 94.1424
+  epoch  5  mean loss 2.9813
+  epoch 10  mean loss 1.6336
+  epoch 15  mean loss 1.1557
+  epoch 20  mean loss 0.9631
+  epoch 25  mean loss 0.8504
+  epoch 29  mean loss 0.8394
+
+held-out evaluation on real traces:
+  detection   AUC-ROC   1.000   (2595 events)
+  localize    Hit@1     1.000
+  localize    MRR       1.000   (40 anomalous)
+  attribution over 40 use-after-free (Hit@1 / Hit@3 / MRR):
+    model              0.850   0.975   0.905
+    recency baseline   0.000   0.000   0.114
+    same-obj recency   0.000   0.500   0.292
+    same-obj write     0.425   1.000   0.683
+    trig-adjacent      0.050   0.050   0.159
+    trig-window        1.000   1.000   1.000
+    ochiai FL          0.000   0.000   0.114
+    tarantula FL       0.000   0.000   0.114
+
+=== aggregate over 1 seeds (mean ± std) ===
+  detection_auc          1.000 ± 0.000
+  attrib_scored          40.000 ± 0.000
+  attrib_dropped         0.000 ± 0.000
+  localize_hit1          1.000 ± 0.000
+  localize_mrr           1.000 ± 0.000
+  model_hit1             0.850 ± 0.000
+  model_hit3             0.975 ± 0.000
+  model_mrr              0.905 ± 0.000
+  recency_hit1           0.000 ± 0.000
+  recency_hit3           0.000 ± 0.000
+  recency_mrr            0.114 ± 0.000
+  obj_recency_hit1       0.000 ± 0.000
+  obj_recency_hit3       0.500 ± 0.000
+  obj_recency_mrr        0.292 ± 0.000
+  obj_write_hit1         0.425 ± 0.000
+  obj_write_hit3         1.000 ± 0.000
+  obj_write_mrr          0.683 ± 0.000
+  trig_adjacent_hit1     0.050 ± 0.000
+  trig_adjacent_hit3     0.050 ± 0.000
+  trig_adjacent_mrr      0.159 ± 0.000
+  trig_window_hit1       1.000 ± 0.000
+  trig_window_hit3       1.000 ± 0.000
+  trig_window_mrr        1.000 ± 0.000
+  ochiai_hit1            0.000 ± 0.000
+  ochiai_hit3            0.000 ± 0.000
+  ochiai_mrr             0.114 ± 0.000
+  tarantula_hit1         0.000 ± 0.000
+  tarantula_hit3         0.000 ± 0.000
+  tarantula_mrr          0.114 ± 0.000
