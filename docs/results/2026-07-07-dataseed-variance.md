@@ -49,5 +49,32 @@ the title-drop decision holds.)
 
 ## UAF (real ASan) + de-biased eval
 
-[pending: dataseed_uaf.sh — 3 ASan captures at data seeds 99/2/3, then bias
-0/4/8 + causal per seed, with the crash-window eval and attrib_dropped count.]
+Three ASan captures (data seeds 99/2/3), bias 0/4/8 + causal on d99, bias 4 on
+all three, 5 model seeds each, with the crash-window eval (L2 fix).
+
+**L2 result — the filter did not bite on this corpus.** `attrib_dropped = 0`,
+82 scored, on every run: the templated UAF traces are short enough that the
+crash always falls in the first window, so the de-biased numbers are identical
+to the pre-fix ones (bias 0 = 0.488 ± 0.145, bias 4 = 0.824 ± 0.247, bias 8 =
+0.893 ± 0.125). The selection filter was real in principle and bit hard on the
+mjs pilot (whose crash sat in window 191), but it does not distort the
+templated-corpus numbers. Honest empirical answer, not an assumption.
+
+**Data-seed variance (bias 4).** Per data seed: d99 = 0.824 ± 0.247, d2 =
+0.819 ± 0.230, d3 = 0.812 ± 0.138. **Pooled = 0.818 ± 0.210 (n=15).** The mean
+is stable across corpus realizations; the wide ± is model-init variance at
+bias 4. Deterministic rows are stable: recency 0.378, obj-recency (the UAF
+oracle) 1.000, spectrum FL 0.000, detection AUC 0.997.
+
+**Bidirectionality ablation on real UAF (d99, 5 seeds): causal wins clearly.**
+
+| attention | Hit@1 |
+|---|---|
+| bidirectional (bias 4) | 0.824 ± 0.247 |
+| causal (bias 4) | **0.976 ± 0.031** |
+
+On the real corpus the backward-only model is decisively better and far
+tighter — near the oracle's 1.000. Combined with v1 (causal higher mean) and
+v2 (causal overlaps), **no corpus shows bidirectionality helping, and the one
+real corpus shows it clearly hurting.** The title-drop decision is now backed
+by three benchmarks including real data, not one.

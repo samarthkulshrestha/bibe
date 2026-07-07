@@ -101,9 +101,13 @@ we crank the hand-injected same-object prior (bias 4 and 8). That prior is the
 heuristic itself wired into attention, so those higher numbers are an oracle
 upper bound, not a learned capability. Plain positional recency scores 0.378
 and spectrum fault localization scores 0.000 (every function appears in both
-passing and failing traces). UAF is thus a clean negative control: the bug
-class with a free oracle is exactly the one where learning is unnecessary.
-(docs/results/2026-07-03-object-bias-matrix.md)
+passing and failing traces). These numbers hold under data-seed variance
+(pooled bias 4 = 0.818 ± 0.210 over 3 corpus realizations) and under the
+de-biased crash-window eval (0 traces dropped — the templated traces all fit
+one window). UAF is thus a clean negative control: the bug class with a free
+oracle is exactly the one where learning is unnecessary.
+(docs/results/2026-07-03-object-bias-matrix.md,
+docs/results/2026-07-07-dataseed-variance.md)
 
 ## 4. Capability probe: synthetic distal causes (full rule ladder)
 
@@ -161,14 +165,17 @@ number below is model-supervised at object_bias 4:
 ## 5. Ablations
 
 - Bidirectional vs causal attention (the namesake mechanism, tested for the
-  first time): **no benchmark here shows bidirectionality helping; on the
-  mean it is worse** (bidi Hit@1 0.537 ± 0.118 vs causal 0.805 ± 0.235; the
-  stds overlap, so this is "not better", not a significant loss). All
-  benchmark causes precede symptoms, so backward-only attention suffices.
-  That is enough to justify the decision gate: **"bidirectional" is dropped
-  from the title and claims.** The future-events motivation remains an
-  untested hypothesis no current benchmark exercises.
-  (docs/results/2026-07-03-bidi-ablation.md)
+  first time), across three corpora: **no benchmark shows bidirectionality
+  helping, and the one real corpus shows it clearly hurting.** On real UAF the
+  causal (backward-only) model scores **0.976 ± 0.031 vs bidirectional's
+  0.824 ± 0.247** — decisively better and near the oracle. On distal v1 causal
+  is higher on the mean (0.805 ± 0.235 vs 0.537 ± 0.118); on v2 the two
+  overlap. Since every benchmark cause precedes its symptom, backward-only
+  attention suffices and the forward half adds noise. The decision gate
+  fired: **"bidirectional" is dropped from the title and claims.** The
+  future-events motivation remains an untested hypothesis no current benchmark
+  exercises. (docs/results/2026-07-03-bidi-ablation.md,
+  docs/results/2026-07-07-dataseed-variance.md)
 - Object bias 0/4/8 across corpora (the injected relational prior),
   model Hit@1:
 
@@ -222,13 +229,16 @@ we report it as a feasibility probe, not a measured result.
   significance test backs any inequality; the two we lean on (LSTM ≥
   transformer on v1; model < oracle) are large enough to be safe, the rest
   are stated as ties.
-- **L2 — first-window selection.** The harness scores attribution only on the
-  first 64-event window of each trace, so on the real (variable-length) UAF
-  corpus the "82 anomalous test traces" are the crash-fits-in-window subset,
-  not the full anomalous population — a selection effect on the absolute
-  numbers (the model-vs-baseline comparison stays fair, both see the same
-  retained set). The mjs pilot is the extreme case: its crash fell outside
-  the first window and was dropped entirely.
+- **L2 — first-window selection (fixed; measured impact = 0 on the templated
+  corpus).** The harness now scores the window *containing the crash*, not
+  blindly the first, and reports a drop count for anomalous traces whose cause
+  falls outside that window. On the templated UAF corpus the drop count is 0
+  (82 scored) — those traces are short enough that the crash always fits the
+  first window, so the numbers are unchanged. The filter was nonetheless real:
+  the mjs pilot's crash sat in window 191 and would have been silently dropped
+  under the old first-window-only eval. We disclose it because on a
+  longer/real corpus it would bias the retained set toward cause-near-crash
+  traces (where recency is trivially perfect).
 - The templated→real gap is unstarted; cross-program generalization is
   unmeasured (all corpora share one program family or one generator).
 - The interesting regime (distal causes) has no automatic oracle, so
