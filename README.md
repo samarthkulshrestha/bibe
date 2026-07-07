@@ -30,7 +30,7 @@ It then uses a custom-built transformer model to:
 2. Flag suspicious events in new traces
 3. Use attention mechanisms to show which earlier events are causally related to the bug
 
-**Key insight**: Unlike standard transformers that only look backward, BiBE looks *both* forward and backward in execution traces. This is crucial because sometimes a crash is explained by events that happen *after* a problematic allocation (like a deallocation that should have happened before).
+**Original hypothesis (now ablated)**: BiBE attends *both* forward and backward in execution traces, on the theory that a crash can be explained by events that happen *after* it (like a deallocation that should have happened earlier). The ablation did not support this: a backward-only (causal) model matches or beats the bidirectional one on every current benchmark, because observed causes precede their symptoms (`docs/results/2026-07-03-bidi-ablation.md`). The forward-attention case remains an untested hypothesis that no current benchmark exercises.
 
 ## Current Status
 
