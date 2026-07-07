@@ -70,7 +70,7 @@ handles = [plt.Rectangle((0, 0), 1, 1, color=COLOR[m]) for m in METHODS]
 ax.legend(handles, METHODS, ncol=5, fontsize=8, frameon=False,
           loc="upper center", bbox_to_anchor=(0.5, 1.14))
 ax.set_title("The learned model wins no benchmark: below the oracle everywhere, "
-             "below or tied with a plain LSTM",
+             "below or tied with a plain LSTM on the synthetic corpora",
              fontsize=9.5, color="#444444", pad=24)
 fig.tight_layout()
 out = __file__.rsplit("/", 1)[0] + "/fig1_summary.svg"
