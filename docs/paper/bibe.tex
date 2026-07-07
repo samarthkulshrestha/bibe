@@ -58,7 +58,7 @@ These numbers survive two checks. Pooled over three independent corpus realizati
 
 \section{Distal causes: a capability probe}
 
-If learning can help anywhere, it should be where the cause is distal, not the most-recent related event, so that recency fails. We built a generator for that regime. The final version, v2 (gapped), places a \code{trigger} marker carrying the real object id, then inserts a verified gap of at least two same-object events before the causal write, so that no adjacency rule can recover the cause and no baseline is blind to the marker. The label is the first same-object write after the same-object trigger.
+If learning can help anywhere, it should be where the cause is distal (not the most-recent related event) so that recency fails. We built a generator for that regime. The final version, v2 (gapped), places a \code{trigger} marker carrying the real object id, then inserts a verified gap of at least two same-object events before the causal write, so that no adjacency rule can recover the cause and no baseline is blind to the marker. The label is the first same-object write after the same-object trigger.
 
 Table~\ref{tab:ladder} gives the full ladder on v2 at object bias 4.
 
@@ -147,6 +147,6 @@ Bidirectional encoders over log and trace sequences are established; LogBERT~\ci
 
 \section{Conclusion}
 
-The honest summary is that learned attribution beat no implementable heuristic in any setting we could measure. Where an automatic oracle exists, the oracle also gives a one-line rule that the model cannot beat. Even on the distal synthetic corpus we built to make recency fail, a one-line rule (``the second same-object write'') still wins, so we did not find a constructed regime where the model comes out ahead. Our bespoke attention model does not beat a plain LSTM, and its defining bidirectional mechanism does not help. We do not claim learning cannot help anywhere; we claim we never observed it help, and that the regime where it plausibly could --- a distal cause ambiguous among several real frees --- is exactly the one with no automatic oracle, which we could not label at scale. The useful output of this work is that boundary. We would rather leave the marker where the evidence puts it than move it to make the model look better.
+The honest summary is that learned attribution beat no implementable heuristic in any setting we could measure. Where an automatic oracle exists, the oracle also gives a one-line rule that the model cannot beat. Even on the distal synthetic corpus we built to make recency fail, a one-line rule (``the second same-object write'') still wins, so we did not find a constructed regime where the model comes out ahead. Our bespoke attention model does not beat a plain LSTM, and its defining bidirectional mechanism does not help. We do not claim learning cannot help anywhere; we claim we never observed it help, and that the regime where it plausibly could, a distal cause ambiguous among several real frees, is exactly the one with no automatic oracle, which we could not label at scale. The useful output of this work is that boundary. We would rather leave the marker where the evidence puts it than move it to make the model look better.
 
 \end{document}
