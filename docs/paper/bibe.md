@@ -1,7 +1,7 @@
 # When does learned root-cause attribution beat a one-line heuristic?
 
 **Samarth Kulshrestha**
-`samarth.kulshrestha@lyriem.com`
+`sk301@snu.edu.in`
 
 ## Abstract
 
