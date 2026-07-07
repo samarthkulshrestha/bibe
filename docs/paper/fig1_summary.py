@@ -23,9 +23,11 @@ COLOR = {
 }
 # corpus -> {method: (mean, std or None; None -> deterministic, no bar). np.nan -> not run}
 DATA = {
+    # Transformer bars use bias 4 on every corpus (consistent config). The
+    # UAF transformer is pooled over 3 realizations (0.818); v1/v2 as noted.
     "UAF\n(real ASan)": {
         "recency": (0.378, None), "best domain rule": (1.000, None),
-        "bi-LSTM": (np.nan, None), "transformer (ours)": (0.488, 0.145),
+        "bi-LSTM": (np.nan, None), "transformer (ours)": (0.818, 0.210),
         "oracle rule": (1.000, None),
     },
     "distal v1\n(adjacent)": {

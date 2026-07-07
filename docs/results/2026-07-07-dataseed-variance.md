@@ -66,15 +66,18 @@ is stable across corpus realizations; the wide ± is model-init variance at
 bias 4. Deterministic rows are stable: recency 0.378, obj-recency (the UAF
 oracle) 1.000, spectrum FL 0.000, detection AUC 0.997.
 
-**Bidirectionality ablation on real UAF (d99, 5 seeds): causal wins clearly.**
+**Bidirectionality ablation on real UAF, pooled over 3 data seeds (5 model seeds each): causal wins, replicated.**
 
-| attention | Hit@1 |
-|---|---|
-| bidirectional (bias 4) | 0.824 ± 0.247 |
-| causal (bias 4) | **0.976 ± 0.031** |
+| attention | pooled Hit@1 (n=15) | per data seed (d99 / d2 / d3) |
+|---|---|---|
+| bidirectional (bias 4) | 0.818 ± 0.210 | 0.824 / 0.819 / 0.812 |
+| causal (bias 4) | **0.989 ± 0.021** | 0.976 / 0.994 / 0.998 |
 
-On the real corpus the backward-only model is decisively better and far
-tighter — near the oracle's 1.000. Combined with v1 (causal higher mean) and
-v2 (causal overlaps), **no corpus shows bidirectionality helping, and the one
-real corpus shows it clearly hurting.** The title-drop decision is now backed
-by three benchmarks including real data, not one.
+The backward-only model beats the bidirectional one on every one of the three
+UAF realizations, by ~0.17 Hit@1, and its variance is tight (± 0.021 pooled)
+and near the oracle's 1.000. This replicates the single-seed result and
+upgrades it: bidirectionality does not merely fail to help on real UAF, it
+costs ~0.17 Hit@1, consistently. Combined with v1 (causal higher mean) and v2
+(causal overlaps), **no corpus shows bidirectionality helping, and the real
+corpus shows it hurting across three realizations.** The title-drop decision
+is backed by three benchmarks including real data.
