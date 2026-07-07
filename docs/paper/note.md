@@ -108,10 +108,27 @@ From `docs/results/2026-07-03-distal-v1-oracle.md` (v1, adjacent):
   object id), and the model never reaches the definitional/oracle rule in
   any cell. (docs/results/2026-07-03-object-bias-matrix.md)
 
-## 6. Real-bug pilot
+## 6. Real-bug pilot (mjs use-after-free) — NICHE-CONFIRMED
 
-[pending: Task 10 — one OSS-Fuzz crash, timeboxed; outcome recorded
-whichever way it lands: NICHE-CONFIRMED / REAL-DISTAL-WIN / JOIN-FAILED]
+One real crash from a program we did not write: a heap-use-after-free in the
+mjs JavaScript engine's `mjs_next()` (array `splice()` during `for-in`;
+issue #322, CWE-416). Run through the *existing* capture pipeline
+(`docs/results/2026-07-07-oss-fuzz-pilot.md`).
+
+- The ASan→event-index join **succeeded** on real, un-generated code: symptom
+  `mjs_next` #12211, cause `gc_free_block` #12188, in a 12,213-event,
+  178-function trace. The cause is genuinely distal — 23 events (a full
+  `gc_sweep` + interpreter churn) separate it from the crash.
+- **Positional recency ranks the true cause 24th (Hit@1 = 0)** — the naive
+  baseline fails on a real distal cause, matching the synthetic benchmarks.
+- **A one-line "most-recent deallocation call" heuristic gets Hit@1 = 1.0**,
+  because `gc_free_block` is the unique free before the crash. Heuristic
+  wins; ML unnecessary — the UAF story, now on real code.
+- **Data wall, concrete:** we could not train/evaluate the learned model —
+  one trace is not a trainable corpus, and the crash sits in the last of 191
+  windows. The regime where learning might win (several candidate frees) does
+  not arise in this PoC. Confirms the note's thesis on contact with real
+  software rather than only synthetic constructions.
 
 ## 7. Limitations (verbatim honesty)
 
