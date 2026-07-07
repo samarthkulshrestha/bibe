@@ -68,10 +68,10 @@ ax.spines[["top", "right"]].set_visible(False)
 ax.grid(axis="y", color="#eeeeee", zorder=0)
 handles = [plt.Rectangle((0, 0), 1, 1, color=COLOR[m]) for m in METHODS]
 ax.legend(handles, METHODS, ncol=5, fontsize=8, frameon=False,
-          loc="upper center", bbox_to_anchor=(0.5, 1.14))
+          loc="upper center", bbox_to_anchor=(0.5, 1.10))
 ax.set_title("The learned model wins no benchmark: below the oracle everywhere, "
              "below or tied with a plain LSTM on the synthetic corpora",
-             fontsize=9.5, color="#444444", pad=24)
+             fontsize=9.5, color="#444444", pad=46)
 fig.tight_layout()
 out = __file__.rsplit("/", 1)[0] + "/fig1_summary.svg"
 fig.savefig(out, bbox_inches="tight")
