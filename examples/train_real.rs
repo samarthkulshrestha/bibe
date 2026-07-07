@@ -164,10 +164,30 @@ fn evaluate(
     let write_id = vocab.encode("write");
     let trigger_id = vocab.encode("trigger");
     let mut n_att = 0usize;
+    // Anomalous test traces whose crash lands in a window that does NOT also
+    // contain the cause — attribution is not scorable for them. Counted and
+    // reported so the attribution denominator is not silently the "easy" subset.
+    let mut n_dropped = 0usize;
 
     for trace in test {
         let windows = extract_windows(trace, WINDOW, WINDOW);
-        let batch = collate(&windows[..1], vocab);
+        if windows.is_empty() {
+            continue;
+        }
+        // Evaluate the window CONTAINING THE CRASH, not blindly the first one.
+        // Previously only windows[..1] was scored, which silently dropped every
+        // long real trace whose crash falls past position WINDOW. For synthetic
+        // traces (<= WINDOW events) this is window 0 and behavior is unchanged.
+        let target = if trace.is_anomalous() {
+            windows.iter().position(|w| w.labels.iter().any(|&l| l > 0.5))
+        } else {
+            Some(0)
+        };
+        let Some(wi) = target else {
+            n_dropped += 1;
+            continue;
+        };
+        let batch = collate(&windows[wi..wi + 1], vocab);
         let aux = Var::new(batch.aux.clone(), false);
         let out = model.forward(&batch.function_ids, &batch.object_ids, &aux, 1, batch.seq, false);
         let scores = out.anomaly_scores.tensor().data;
@@ -193,9 +213,15 @@ fn evaluate(
             n_anom += 1;
         }
 
-        // Attribution: rank candidate source events and find the cause, for the
-        // model and the two baselines.
-        if let (Some(crash), Some(cause)) = (trace.root_cause(), trace.cause())
+        // Attribution: rank candidate source events and find the cause, using
+        // LOCAL window positions (crash from labels, cause from cause labels).
+        let crash_local = (0..batch.seq).find(|&s| batch.labels.data[s] > 0.5);
+        let cause_local = (0..batch.seq).find(|&s| batch.cause.data[s] > 0.5);
+        if trace.is_anomalous() && crash_local.is_some() && cause_local.is_none() {
+            // Crash is in this window but the cause is not — not scorable.
+            n_dropped += 1;
+        }
+        if let (Some(crash), Some(cause)) = (crash_local, cause_local)
             && cause != crash
         {
             let candidates: Vec<usize> = (0..batch.seq)
@@ -297,6 +323,11 @@ fn evaluate(
         println!("  localize    Hit@1     {:.3}", loc1 as f32 / n_anom as f32);
         println!("  localize    MRR       {:.3}   ({n_anom} anomalous)", loc_mrr / n_anom as f32);
     }
+    if n_dropped > 0 {
+        println!(
+            "  attribution dropped {n_dropped} anomalous traces (cause outside the crash window)"
+        );
+    }
     if n_att > 0 {
         println!("  attribution over {n_att} use-after-free (Hit@1 / Hit@3 / MRR):");
         println!("    model              {}", model_score.report(n_att));
@@ -309,7 +340,11 @@ fn evaluate(
         println!("    tarantula FL       {}", tarantula_score.report(n_att));
     }
 
-    let mut metrics = vec![("detection_auc".to_string(), auc)];
+    let mut metrics = vec![
+        ("detection_auc".to_string(), auc),
+        ("attrib_scored".to_string(), n_att as f32),
+        ("attrib_dropped".to_string(), n_dropped as f32),
+    ];
     if n_anom > 0 {
         metrics.push(("localize_hit1".to_string(), loc1 as f32 / n_anom as f32));
         metrics.push(("localize_mrr".to_string(), loc_mrr / n_anom as f32));
