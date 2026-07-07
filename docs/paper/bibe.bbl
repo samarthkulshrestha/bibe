@@ -1,0 +1,47 @@
+\begin{thebibliography}{1}
+
+\bibitem{abnar2020}
+Samira Abnar and Willem Zuidema.
+\newblock Quantifying attention flow in transformers.
+\newblock In {\em Proceedings of the 58th Annual Meeting of the Association for
+  Computational Linguistics (ACL)}, pages 4190--4197, 2020.
+
+\bibitem{ochiai}
+Rui Abreu, Peter Zoeteweij, and Arjan J.~C. van Gemund.
+\newblock On the accuracy of spectrum-based fault localization.
+\newblock In {\em Testing: Academic and Industrial Conference Practice and
+  Research Techniques (TAICPART-MUTATION)}, pages 89--98, 2007.
+
+\bibitem{mjs}
+{Cesanta Software}.
+\newblock mjs: Embedded javascript engine. issue \#322 (heap-use-after-free,
+  cwe-416).
+\newblock \url{https://github.com/cesanta/mjs}, 2024.
+
+\bibitem{deeplog}
+Min Du, Feifei Li, Guineng Zheng, and Vivek Srikumar.
+\newblock Deeplog: Anomaly detection and diagnosis from system logs through
+  deep learning.
+\newblock In {\em Proceedings of the ACM SIGSAC Conference on Computer and
+  Communications Security (CCS)}, pages 1285--1298, 2017.
+
+\bibitem{logbert}
+Haixuan Guo, Shuhan Yuan, and Xintao Wu.
+\newblock Logbert: Log anomaly detection via bert.
+\newblock In {\em International Joint Conference on Neural Networks (IJCNN)},
+  pages 1--8, 2021.
+
+\bibitem{tarantula}
+James~A. Jones and Mary~Jean Harrold.
+\newblock Empirical evaluation of the tarantula automatic fault-localization
+  technique.
+\newblock In {\em Proceedings of the 20th IEEE/ACM International Conference on
+  Automated Software Engineering (ASE)}, pages 273--282, 2005.
+
+\bibitem{asan}
+Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitriy Vyukov.
+\newblock Addresssanitizer: A fast address sanity checker.
+\newblock In {\em USENIX Annual Technical Conference (ATC)}, pages 309--318,
+  2012.
+
+\end{thebibliography}

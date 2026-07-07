@@ -22,7 +22,7 @@
 \maketitle
 
 \begin{abstract}
-We tried to learn root-cause attribution over program execution traces with an attention model, and we report a negative result. On use-after-free, the one bug class with an automatic sanitizer oracle, the cause is by definition the most-recent same-object event before the crash, so a one-line heuristic attributes it perfectly (Hit@1 $= 1.000$) and the learned model does not. We then built synthetic benchmarks where recency fails by construction. There a cause-supervised model recovers the planted relational signal, reaching Hit@1 around $0.81$ (pooled over corpus realizations) against a recency baseline near zero, but it never beats the generator's own oracle rule, and it ties or loses to a plain bidirectional LSTM. Ablating the bidirectional attention we designed the system around shows the mechanism does not help; on the real corpus it hurts, where a backward-only model scores $0.989$ against the bidirectional model's $0.818$, pooled over three corpus realizations. On one real bug from the mjs interpreter our pipeline maps the sanitizer report onto the trace, but that trace contains a single free, so attribution is not measurable and one example is not a training set. The regime where learning might help, a distal cause among several plausible frees, is the same regime that has no automatic oracle, which we could not label at scale. We give the boundary and the reasons for it.
+We tried to learn root-cause attribution over program execution traces with an attention model, and we report a negative result. On use-after-free, the one bug class with an automatic sanitizer oracle, the cause is by definition the most-recent same-object event before the crash, so a one-line heuristic attributes it perfectly (Hit@1 $= 1.000$) and the learned model does not. We then built synthetic benchmarks where recency fails by construction. A cause-supervised model recovers the planted relational signal there, reaching Hit@1 around $0.81$ (pooled over corpus realizations) against a recency baseline near zero. But it never beats the generator's own oracle rule, and it ties or loses to a plain bidirectional LSTM. Ablating the bidirectional attention we designed the system around shows the mechanism does not help; on the real corpus it hurts, where a backward-only model scores $0.989$ against the bidirectional model's $0.818$, pooled over three corpus realizations. On one real bug from the mjs interpreter our pipeline maps the sanitizer report onto the trace, but that trace contains a single free, so attribution is not measurable and one example is not a training set. The regime where learning might help, a distal cause among several plausible frees, is the same regime that has no automatic oracle, which we could not label at scale. We give the boundary and the reasons for it.
 \end{abstract}
 
 \section{Introduction}
@@ -142,15 +142,8 @@ The LSTM trains on a single objective (cause cross-entropy) while the transforme
 
 Bidirectional encoders over log and trace sequences are established; LogBERT~\cite{logbert} and DeepLog~\cite{deeplog} are the standard references, and our bidirectional framing is not new. Attention rollout~\cite{abnar2020} is one way to turn attention into an attribution map; we tried it and fell back to raw last-layer, head-averaged attention. Spectrum-based fault localization --- Tarantula~\cite{tarantula} and the Ochiai coefficient applied to fault localization~\cite{ochiai} --- is a classic non-learned baseline. It is blind on our corpora because it ranks functions by cross-trace coverage, and here every function appears in both passing and failing traces; we include it as a floor, not a competitor. Our labels come from AddressSanitizer~\cite{asan}, and the real bug is issue \#322 in the mjs interpreter~\cite{mjs}.
 
-\begin{thebibliography}{9}
-\bibitem{abnar2020} Abnar, S. and Zuidema, W. (2020). Quantifying Attention Flow in Transformers. \emph{ACL 2020}.
-\bibitem{ochiai} Abreu, R., Zoeteweij, P., and van Gemund, A. J. C. (2007). On the Accuracy of Spectrum-based Fault Localization. \emph{TAICPART-MUTATION 2007}.
-\bibitem{deeplog} Du, M., Li, F., Zheng, G., and Srikumar, V. (2017). DeepLog: Anomaly Detection and Diagnosis from System Logs through Deep Learning. \emph{ACM CCS 2017}.
-\bibitem{logbert} Guo, H., Yuan, S., and Wu, X. (2021). LogBERT: Log Anomaly Detection via BERT. \emph{IJCNN 2021}.
-\bibitem{tarantula} Jones, J. A. and Harrold, M. J. (2005). Empirical Evaluation of the Tarantula Automatic Fault-Localization Technique. \emph{ASE 2005}.
-\bibitem{asan} Serebryany, K., Bruening, D., Potapenko, A., and Vyukov, D. (2012). AddressSanitizer: A Fast Address Sanity Checker. \emph{USENIX ATC 2012}.
-\bibitem{mjs} mjs embedded JavaScript engine, Cesanta. Issue \#322 (heap-use-after-free, CWE-416). \url{https://github.com/cesanta/mjs}.
-\end{thebibliography}
+\bibliographystyle{plain}
+\bibliography{bibe}
 
 \section{Conclusion}
 
