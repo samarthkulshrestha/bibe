@@ -96,7 +96,9 @@ machinery by building it.
 
 ### Prerequisites
 - Rust toolchain (edition 2024 or later)
-- Cargo package manager
+- `clang`, for the AddressSanitizer-labeled capture pipeline
+- Python 3.9+ and `pip install -r requirements.txt`, only for the LSTM
+  baseline and the paper figure
 
 ### Build and Test
 ```bash
@@ -116,7 +118,18 @@ cargo run --release --example ood_study   # leave-one-out generalization study
 cargo run --release --example train_real -- <traces_dir> [raw|rollout|margin] [object_bias] [bidi|causal] [seeds_csv]
 python3 baselines/lstm_attrib.py <traces_dir>   # learned LSTM baseline
 ```
-(AddressSanitizer requires a `clang` toolchain.)
+
+The corpora are generated, not checked in. One data seed of the distal v2
+probe, from a clean clone, takes about 17 minutes on an M-series laptop:
+
+```bash
+cargo run --release --example synth_distal_gen -- 400 instrumentation/out/distal_v2 1 gapped
+cargo run --release --example train_real -- instrumentation/out/distal_v2
+# model_hit1 0.877 ± 0.068   trig_window (oracle rule) 1.000   recency 0.000
+```
+
+The UAF half additionally needs `clang`, since the labels come from
+AddressSanitizer.
 
 ## Project Structure
 
