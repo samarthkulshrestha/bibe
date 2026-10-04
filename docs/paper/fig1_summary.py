@@ -4,13 +4,14 @@
 Numbers are copied from docs/results/*.md (see each entry). Palette is the
 CVD-validated Okabe-Ito set (validate_palette.js: ALL CHECKS PASS, worst
 adjacent CVD dE 37.2). Deterministic baselines have no error bar; learned
-models carry mean +/- std over seeds. mjs (n=1) is excluded — its metric is
+models carry mean +/- std over seeds. mjs (n=1) is excluded; its metric is
 vacuous (single free); see the note's Section 6.
 """
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import textwrap
 
 # method identity -> fixed hue (never cycled)
 METHODS = ["recency", "best domain rule", "bi-LSTM", "transformer (ours)", "oracle rule"]
@@ -45,33 +46,49 @@ DATA = {
 corpora = list(DATA)
 n_m = len(METHODS)
 bw = 0.15
-fig, ax = plt.subplots(figsize=(9, 4.2))
+
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "axes.edgecolor": "#888888",
+    "text.color": "#222222",
+})
+
+fig, ax = plt.subplots(figsize=(9, 4.4))
 for i, corpus in enumerate(corpora):
     for j, m in enumerate(METHODS):
         mean, std = DATA[corpus][m]
         if np.isnan(mean):
             continue
         x = i + (j - (n_m - 1) / 2) * bw
-        ax.bar(x, mean, bw * 0.92, color=COLOR[m], zorder=3,
-               yerr=std, ecolor="#333333", capsize=2.5 if std else 0,
-               error_kw={"lw": 1})
-        ax.text(x, mean + (std or 0) + 0.02, f"{mean:.2f}", ha="center",
-                va="bottom", fontsize=7, color="#222222", rotation=0)
+        ax.bar(x, mean, bw * 0.9, color=COLOR[m], zorder=3,
+               yerr=std, ecolor="#444444", capsize=2.5 if std else 0,
+               error_kw={"lw": 1, "capthick": 1})
+        ax.annotate(f"{mean:.2f}", (x, mean + (std or 0)),
+                    textcoords="offset points", xytext=(0, 3), ha="center",
+                    va="bottom", fontsize=6.5, color="#555555")
 
 ax.set_xticks(range(len(corpora)))
-ax.set_xticklabels(corpora, fontsize=9)
-ax.set_ylabel("Attribution Hit@1", fontsize=10)
-ax.set_ylim(0, 1.18)
+ax.set_xticklabels(corpora, fontsize=9.5)
+ax.set_ylabel("Attribution Hit@1", fontsize=10.5)
+ax.set_ylim(0, 1.15)
 ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-ax.axhline(1.0, color="#bbbbbb", lw=0.8, ls="--", zorder=1)
+ax.tick_params(axis="both", length=0, colors="#444444")
+ax.axhline(1.0, color="#c8c8c8", lw=0.8, ls=(0, (4, 3)), zorder=1)
 ax.spines[["top", "right"]].set_visible(False)
-ax.grid(axis="y", color="#eeeeee", zorder=0)
+ax.spines[["left", "bottom"]].set_color("#bbbbbb")
+ax.grid(axis="y", color="#ededed", lw=0.9, zorder=0)
+ax.set_axisbelow(True)
+
 handles = [plt.Rectangle((0, 0), 1, 1, color=COLOR[m]) for m in METHODS]
-ax.legend(handles, METHODS, ncol=5, fontsize=8, frameon=False,
-          loc="upper center", bbox_to_anchor=(0.5, 1.10))
-ax.set_title("The learned model wins no benchmark: below the oracle everywhere, "
-             "below or tied with a plain LSTM on the synthetic corpora",
-             fontsize=9.5, color="#444444", pad=46)
+ax.legend(handles, METHODS, ncol=5, fontsize=8.5, frameon=False,
+          handlelength=1.1, handleheight=1.1, columnspacing=1.4,
+          loc="upper center", bbox_to_anchor=(0.5, 1.09))
+
+title = ("The learned model wins no benchmark: below the oracle everywhere, "
+         "below or tied with a plain LSTM on the synthetic corpora")
+ax.set_title("\n".join(textwrap.wrap(title, width=82)),
+             fontsize=10, color="#555555", pad=34)
+
 fig.tight_layout()
 out = __file__.rsplit("/", 1)[0] + "/fig1_summary.svg"
 fig.savefig(out, bbox_inches="tight")

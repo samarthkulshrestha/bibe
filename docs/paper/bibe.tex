@@ -2,14 +2,37 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}
-\usepackage[margin=1in]{geometry}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath}
+\usepackage{mathpazo}      % Palatino body + matching math
+\usepackage[varqu,scaled=0.95]{inconsolata}  % Inconsolata for \texttt / \code
+\usepackage{microtype}     % protrusion + font expansion
 \usepackage{booktabs}
 \usepackage{graphicx}
-\usepackage{amsmath}
-\usepackage{hyperref}
 \usepackage{xcolor}
-\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue}
+\usepackage{titlesec}
+
+\definecolor{accent}{HTML}{15334E}   % dark navy: internal links + citations
+\definecolor{linkblue}{HTML}{1F5FA6} % external URLs
+
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=accent, citecolor=accent, urlcolor=linkblue,
+  pdftitle={When does learned root-cause attribution beat a one-line heuristic?},
+  pdfauthor={Samarth Kulshrestha}}
+\usepackage[font=small,labelfont=bf,labelsep=period,margin=1.5em]{caption}
+
+\linespread{1.05}                        % Palatino breathes better with extra leading
+\renewcommand{\arraystretch}{1.18}       % roomier table rows
+
+\titleformat{\section}
+  {\normalfont\large\bfseries}{\thesection}{0.75em}{}
+\titleformat{\subsection}
+  {\normalfont\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\paragraph}[runin]
+  {\normalfont\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{1.4\baselineskip}{0.5\baselineskip}
+\titlespacing*{\subsection}{0pt}{1.1\baselineskip}{0.4\baselineskip}
+\titlespacing*{\paragraph}{0pt}{0.7\baselineskip}{0.6em}
 
 \newcommand{\dmodel}{\ensuremath{d_{\text{model}}}}
 \newcommand{\code}[1]{\texttt{#1}}
