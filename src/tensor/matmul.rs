@@ -53,8 +53,11 @@ fn matmul_2d(a: &Tensor, b: &Tensor) -> Tensor {
     Tensor::new(out, vec![m, n])
 }
 
-/// Cache-blocked matmul for better performance on larger matrices.
-/// Block size 32 is a reasonable default for most cache hierarchies.
+/// 2D matmul that walks the output in 32x32 tiles instead of row by row.
+/// Same result as `matmul`, different iteration order; not benchmarked here.
+///
+/// NOTE: nothing in the model path calls this yet, only the tests in
+/// tests/matmul_tests.rs.
 pub fn matmul_blocked(a: &Tensor, b: &Tensor) -> Tensor {
     let a_shape = a.shape();
     let b_shape = b.shape();
