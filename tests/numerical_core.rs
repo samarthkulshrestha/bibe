@@ -1,12 +1,12 @@
-/// Phase 0 Checkpoint — validates all requirements before moving to Phase 1.
+/// End-to-end checks on the tensor and autograd core.
 ///
-/// Requirements:
+/// Covers:
 /// 1. All tensor operations produce correct shapes
 /// 2. Element-wise ops handle broadcasting
 /// 3. Matmul matches known output on random-ish matrices
 /// 4. Softmax is numerically stable (no NaN/Inf)
 /// 5. All backward functions pass gradient checking (ε = 5e-4, tolerance = 1e-2)
-/// 6. Memory usage is reasonable (no leaks in gradient computation)
+/// 6. Repeated and deeply nested graphs still backprop to finite gradients
 
 use bibe::tensor::Tensor;
 use bibe::tensor::matmul::matmul;
@@ -15,9 +15,7 @@ use bibe::tensor::ops;
 use bibe::tensor::stability::{stable_softmax, logsumexp, has_nan, has_inf, all_finite};
 use bibe::autograd::{Var, gradcheck};
 
-// ============================================================
 // 1. All tensor operations produce correct shapes
-// ============================================================
 
 #[test]
 fn checkpoint_shapes_elementwise() {
@@ -90,9 +88,7 @@ fn checkpoint_shapes_logsumexp() {
     assert_eq!(logsumexp(&a, 1).shape(), &[3]);
 }
 
-// ============================================================
 // 2. Element-wise ops handle broadcasting
-// ============================================================
 
 #[test]
 fn checkpoint_broadcast_ops() {
@@ -115,9 +111,7 @@ fn checkpoint_broadcast_shapes_varied() {
     assert_eq!(broadcast_shapes(&[1, 3, 1], &[2, 1, 4]), vec![2, 3, 4]);
 }
 
-// ============================================================
 // 3. Matmul matches known output on specific matrices
-// ============================================================
 
 #[test]
 fn checkpoint_matmul_known_values() {
@@ -160,9 +154,7 @@ fn checkpoint_matmul_transpose_property() {
     }
 }
 
-// ============================================================
 // 4. Softmax is numerically stable (no NaN/Inf)
-// ============================================================
 
 #[test]
 fn checkpoint_softmax_large_values() {
@@ -215,11 +207,9 @@ fn checkpoint_logsumexp_stable() {
     assert!(all_finite(&lse), "logsumexp produced non-finite values");
 }
 
-// ============================================================
 // 5. All backward functions pass gradient checking
 //    Note: optimal ε for f32 central differences ≈ (machine_eps)^(1/3) ≈ 5e-3.
 //    We use ε=5e-4 with tol=1e-2 which is well within f32 precision bounds.
-// ============================================================
 
 const EPS: f32 = 5e-4;
 const TOL: f32 = 1e-2;
@@ -375,7 +365,7 @@ fn checkpoint_gradcheck_chain_ops() {
 
 #[test]
 fn checkpoint_gradcheck_broadcast() {
-    // a: [2, 3] + b: [3] — gradient w.r.t. a
+    // a: [2, 3] + b: [3], gradient w.r.t. a
     let x = Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let (ok, err) = gradcheck(
         &|v| {
@@ -387,14 +377,12 @@ fn checkpoint_gradcheck_broadcast() {
     assert!(ok, "broadcast gradcheck failed: max_rel_err={}", err);
 }
 
-// ============================================================
-// 6. Memory usage is reasonable (no leaks in gradient computation)
-// ============================================================
+// 6. Repeated / deep / shared-node graphs backprop to finite gradients
 
 #[test]
 fn checkpoint_repeated_forward_backward() {
-    // Run many forward/backward passes to verify no accumulating leaks.
-    // If Rc cycles existed, this would grow unboundedly.
+    // Run many forward/backward passes. This does not measure memory; it only
+    // asserts the gradients stay finite across repeated graph construction.
     for _ in 0..1000 {
         let a = Var::new(Tensor::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]), true);
         let b = Var::new(Tensor::new(vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]), true);
@@ -407,7 +395,8 @@ fn checkpoint_repeated_forward_backward() {
         let ga = a.grad().unwrap();
         assert!(ga.data.iter().all(|x| x.is_finite()));
     }
-    // If we reach here without OOM or panic, memory is fine.
+    // Nothing here observes allocation: a real Rc cycle would show up as the
+    // process growing, not as a failed assert.
 }
 
 #[test]
