@@ -37,10 +37,11 @@ exceeds 16 distinct ids is not checked anywhere: the clamp is a silent cap,
 not an asserted invariant. Unknown function names likewise fall back
 to vocab index 0, which is `<PAD>`.
 
-Environment: `torch` is imported with no version pin, and the repo has no
-requirements file or lockfile. The torch version used for the published
-numbers is not recorded. A 2026-10-04 re-run on torch 2.8.0 / macOS-arm64
-moves distal v1 Hit@1 from 0.842 ± 0.117 to 0.847 ± 0.099; see
+Environment: the torch version used for the published 2026-07 numbers is not
+recorded, and until now there was no requirements file. `requirements.txt` at
+the repo root now pins what a 2026-10-04 re-run was measured on (torch 2.8.0,
+Python 3.9.6, macOS-arm64); on that version distal v1 Hit@1 reads
+0.847 ± 0.099 rather than the recorded 0.842 ± 0.117. Both are in
 `docs/results/2026-07-03-lstm-baseline.md`.
 
 How much tuning effort the Rust model received by comparison is not recorded.

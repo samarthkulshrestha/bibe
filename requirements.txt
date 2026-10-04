@@ -1,0 +1,15 @@
+# Python side only: the bi-LSTM attribution baseline (baselines/) and the
+# Figure 1 plot (docs/paper/fig1_summary.py). The Rust core needs none of it,
+# and instrumentation/real/pilot_analyze.py is stdlib-only.
+#
+#   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+#
+# These are the versions the 2026-10-04 re-run was measured on, under
+# Python 3.9.6 / macOS arm64. They are NOT the versions that produced the
+# original 2026-07 numbers, which were never recorded: on torch 2.8.0 the
+# distal v1 LSTM scores 0.847 +/- 0.099 against the 0.842 +/- 0.117 in
+# docs/results/2026-07-03-lstm-baseline.md. Both runs are in that file.
+
+torch==2.8.0
+matplotlib==3.9.4
+numpy==1.26.4
