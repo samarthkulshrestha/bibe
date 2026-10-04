@@ -3,7 +3,14 @@
 
 Same protocol as examples/train_real.rs: sorted paths, 80/20 split,
 cause-supervised (cross-entropy over positions), Hit@1/3 + MRR on anomalous
-test traces, mean +/- std over 5 seeds. Window = first 64 events.
+test traces, mean +/- std over 5 seeds.
+
+No windowing: each trace is fed whole. Every corpus this has been run on is
+well under WINDOW events (longest observed: 50), so this matches what the
+Rust harness scores. Traces longer than WINDOW would be truncated here while
+train_real.rs picks the crash-containing window instead, so the comparison
+would stop being apples-to-apples; load() refuses to run in that case rather
+than silently truncating.
 """
 import glob
 import os
@@ -29,13 +36,20 @@ def parse_trace(path):
             elif line:
                 parts = line.split()
                 events.append((parts[0], int(parts[7])))
-    return events[:WINDOW], label
+    return events, label
 
 
 def load(traces_dir):
     paths = sorted(glob.glob(os.path.join(traces_dir, "*.trace")))
     assert paths, f"no .trace files in {traces_dir}"
     data = [parse_trace(p) for p in paths]
+    longest = max(len(events) for events, _ in data)
+    if longest > WINDOW:
+        raise SystemExit(
+            f"{traces_dir}: longest trace is {longest} events, WINDOW is {WINDOW}. "
+            "train_real.rs would score the crash-containing window; this script "
+            "has no windowing, so the numbers would not be comparable."
+        )
     vocab = {"<PAD>": 0}
     for events, _ in data:
         for f, _ in events:
