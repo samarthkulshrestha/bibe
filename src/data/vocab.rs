@@ -19,6 +19,10 @@ impl Vocabulary {
     /// Build a vocabulary from a corpus of traces, keeping only function names
     /// that occur at least `min_freq` times. Token ids are assigned in sorted
     /// order so the build is deterministic.
+    ///
+    /// TODO: `min_freq` is the only size control; there is no cap on the
+    /// vocabulary, so a corpus with many one-off function names grows the
+    /// embedding table without bound.
     pub fn build(traces: &[Trace], min_freq: usize) -> Self {
         let mut counts: HashMap<&str, usize> = HashMap::new();
         for trace in traces {

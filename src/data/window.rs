@@ -34,6 +34,11 @@ fn pad_event() -> TraceEvent {
 /// Slice a trace into overlapping windows of `window_size`, advancing by
 /// `stride`. Short or trailing windows are padded to `window_size`. An empty
 /// trace yields no windows.
+///
+/// TODO: windows are cut purely by position, so a symptom and its cause can
+/// land in different windows; those traces are unscorable for attribution
+/// (train_real.rs counts them as dropped). Keeping the pair together would
+/// need cause-aware window placement.
 pub fn extract_windows(trace: &Trace, window_size: usize, stride: usize) -> Vec<TraceWindow> {
     assert!(window_size > 0 && stride > 0, "window_size and stride must be positive");
 
