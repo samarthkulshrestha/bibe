@@ -3,7 +3,7 @@
 //! A single sequence of distinct random token vectors is fed through a
 //! self-attention layer that must reconstruct it (target == input, MSE loss).
 //! Because every position holds a distinct token, a *uniform* attention map
-//! would average all tokens together and could never reconstruct them — so
+//! would average all tokens together and could never reconstruct them, so
 //! driving the loss to ~0 is only possible if attention learns to concentrate
 //! on the matching position. This validates, end to end, that:
 //!

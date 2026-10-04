@@ -12,7 +12,7 @@ pub const N_AUX: usize = 5;
 ///
 /// Order: `[depth, l1, l2, llc, branch]`.
 ///
-/// Note: timestamps are intentionally not included here — event order is
+/// Note: timestamps are intentionally not included here. Event order is
 /// carried by the positional encoding, not by a timestamp feature.
 pub fn aux_features(event: &TraceEvent) -> [f32; N_AUX] {
     let log1p = |x: u32| (1.0 + x as f32).ln();

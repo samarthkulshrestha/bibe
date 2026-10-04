@@ -200,7 +200,7 @@ fn candidate_mask(batch: &Batch, window: usize, symptom: usize) -> Vec<f32> {
 }
 
 /// `(window, symptom, cause)` triples for windows whose cause is a distinct
-/// event from the symptom — the only ones worth supervising attention on.
+/// event from the symptom: the only ones worth supervising attention on.
 fn supervised_triples(batch: &Batch) -> Vec<(usize, usize, usize)> {
     let argmax = |row: &[f32]| {
         row.iter()

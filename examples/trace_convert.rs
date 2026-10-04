@@ -123,7 +123,7 @@ fn parse_events(log: &str) -> Vec<TraceEvent> {
 }
 
 /// First stack frame (after the line containing `header`) whose function name
-/// is one of our instrumented functions — skipping libc frames like `free`.
+/// is one of our instrumented functions, skipping libc frames like `free`.
 fn first_app_frame(asan: &str, header: &str, names: &HashSet<String>) -> Option<String> {
     let lines: Vec<&str> = asan.lines().collect();
     let start = lines.iter().position(|l| l.contains(header))?;

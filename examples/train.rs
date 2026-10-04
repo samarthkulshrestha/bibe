@@ -3,8 +3,8 @@
 //! Trains the BiBE model with the full loss (focal + sparsity + contrastive +
 //! attention attribution supervision) and then runs three checks:
 //!   * in-distribution detection and localization metrics,
-//!   * an attribution experiment — does attention link a crash to its cause?
-//!   * an out-of-distribution test — train without use-after-free, detect it.
+//!   * an attribution experiment: does attention link a crash to its cause?
+//!   * an out-of-distribution test (train without use-after-free, detect it).
 //!
 //! ```text
 //! cargo run --release --example train

@@ -98,7 +98,7 @@ pub fn batch_contrastive_loss(
 ///
 /// `attention_weights` are the per-layer self-attention tensors
 /// `[batch*num_heads, seq, seq]`. `supervised` lists `(window, symptom, cause)`
-/// triples — typically only windows where the cause differs from the symptom.
+/// triples, typically only windows where the cause differs from the symptom.
 /// For each layer and triple, the attention from the symptom query to the
 /// cause is averaged over heads and penalized by `-log`, so minimizing the
 /// loss drives that attention mass toward 1. Returns `None` when there is
@@ -153,7 +153,7 @@ pub fn attribution_supervision_loss(
 ///
 /// For each `(window, symptom, cause)` triple, the rollout influence from the
 /// symptom query to the cause is penalized by `-log`, so minimizing drives the
-/// rollout — the value actually used for attribution at inference — to put mass
+/// rollout (the value actually used for attribution at inference) to put mass
 /// on the cause. Supervising the rollout rather than raw attention removes the
 /// train/eval mismatch. Returns `None` when there is nothing to supervise.
 pub fn rollout_supervision_loss(rollout: &Var, supervised: &[(usize, usize, usize)]) -> Option<Var> {
@@ -183,8 +183,8 @@ pub fn rollout_supervision_loss(rollout: &Var, supervised: &[(usize, usize, usiz
 ///
 /// For each `(window, symptom, cause, candidate_mask)` entry, the symptom
 /// query's head-averaged attention is treated as scores over candidate source
-/// positions (the mask is 1.0 for eligible candidates — real, non-symptom
-/// positions — and 0.0 elsewhere), and a softmax cross-entropy ranks the cause
+/// positions (the mask is 1.0 for eligible candidates, meaning real non-symptom
+/// positions, and 0.0 elsewhere), and a softmax cross-entropy ranks the cause
 /// above the competing candidates (the decoy frees):
 ///
 /// ```text

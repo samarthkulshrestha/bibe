@@ -4,7 +4,7 @@
 //! executions labeled by AddressSanitizer), splits train/test, trains the
 //! model, and reports detection, localization, and attribution against the
 //! sanitizer-derived ground truth. In this corpus clean and buggy runs share
-//! the same tokens — only the order of free vs use differs — so detection must
+//! the same tokens (only the order of free vs use differs), so detection must
 //! come from context, not a per-event feature.
 //!
 //! ```text
@@ -165,7 +165,7 @@ fn evaluate(
     let trigger_id = vocab.encode("trigger");
     let mut n_att = 0usize;
     // Anomalous test traces whose crash lands in a window that does NOT also
-    // contain the cause — attribution is not scorable for them. Counted and
+    // contain the cause: attribution is not scorable for them. Counted and
     // reported so the attribution denominator is not silently the "easy" subset.
     let mut n_dropped = 0usize;
 
@@ -218,7 +218,7 @@ fn evaluate(
         let crash_local = (0..batch.seq).find(|&s| batch.labels.data[s] > 0.5);
         let cause_local = (0..batch.seq).find(|&s| batch.cause.data[s] > 0.5);
         if trace.is_anomalous() && crash_local.is_some() && cause_local.is_none() {
-            // Crash is in this window but the cause is not — not scorable.
+            // Crash is in this window but the cause is not, so not scorable.
             n_dropped += 1;
         }
         if let (Some(crash), Some(cause)) = (crash_local, cause_local)

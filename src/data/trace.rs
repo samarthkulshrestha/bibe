@@ -20,9 +20,9 @@ pub struct TraceEvent {
 /// Trace-level label: either a clean run or an anomalous one.
 ///
 /// `root_cause` is where the anomaly manifests (the symptom/crash the detector
-/// should flag). `cause` is the upstream event the attribution should point to
-/// — distinct from `root_cause` for bugs like use-after-free (where the cause
-/// is the earlier `free`), and equal to it for single-event anomalies.
+/// should flag). `cause` is the upstream event the attribution should point to.
+/// It is distinct from `root_cause` for bugs like use-after-free (where the
+/// cause is the earlier `free`), and equal to it for single-event anomalies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceLabel {
     Normal,

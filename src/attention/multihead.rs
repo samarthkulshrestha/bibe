@@ -199,7 +199,7 @@ mod tests {
         let x = Var::new(Tensor::randn(&[1, 3, 4]), false);
 
         // Causal mask: position i can only attend to positions <= i
-        // [1, 3, 3] — row i has 0.0 for j<=i, -1e9 for j>i
+        // [1, 3, 3]: row i has 0.0 for j<=i, -1e9 for j>i
         let mask_data = vec![
             0.0,  -1e9, -1e9,
             0.0,   0.0, -1e9,

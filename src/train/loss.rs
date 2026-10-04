@@ -32,7 +32,7 @@ pub fn bce_loss(pred: &Var, target: &Var) -> Var {
 /// ```
 ///
 /// The `(1-p)^γ` / `p^γ` modulating factors down-weight easy, well-classified
-/// examples so training focuses on hard ones — useful for the heavy class
+/// examples so training focuses on hard ones, which matters for the heavy class
 /// imbalance in anomaly detection. Typical settings are `alpha = 0.75`,
 /// `gamma = 2.0`.
 pub fn focal_loss(pred: &Var, target: &Var, alpha: f32, gamma: f32) -> Var {

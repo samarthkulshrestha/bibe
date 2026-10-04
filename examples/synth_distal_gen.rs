@@ -4,7 +4,7 @@
 //! the one immediately following a `trigger` event. The victim object later
 //! `crash`es (the symptom); its cause is that trigger-preceded write, which is
 //! neither the most-recent event, nor the most-recent same-object event, nor
-//! the most-recent same-object *write* — so recency, same-object-recency, and
+//! the most-recent same-object *write*, so recency, same-object-recency, and
 //! same-object-write baselines all fail. The model must learn the relational
 //! `trigger -> write` pattern. Sanitizers don't catch this class (no oracle),
 //! so labels are injected synthetically.
@@ -14,10 +14,10 @@
 //!
 //! Two modes:
 //! * `gapped` (default, v2): the `trigger` carries the object id (visible to
-//!   same-object baselines — no hidden token) and is separated from its causal
+//!   same-object baselines, no hidden token) and is separated from its causal
 //!   write by benign same-object reads plus interleaving, so no adjacency rule
 //!   works. The oracle rule is "first same-object write after the same-object
-//!   trigger" (`trig-window` in `train_real.rs`) — rule-labeled synthetic data
+//!   trigger" (`trig-window` in `train_real.rs`). Rule-labeled synthetic data
 //!   always has an oracle rule; this benchmark is a capability probe, not an
 //!   "ML beats hand-coded rules" claim.
 //! * `adjacent` (v1): the original construction, where `trigger` (object 0)
@@ -122,7 +122,7 @@ fn object_steps_gapped(rng: &mut StdRng, obj: usize, is_victim: bool) -> Vec<Ste
 
 fn gen_trace(rng: &mut StdRng, anomalous: bool, gapped: bool) -> Trace {
     // Gapped traces are longer per object; keep k small so every trace fits
-    // in train_real's WINDOW (64) — eval only sees the first window.
+    // in train_real's WINDOW (64), since eval only sees the first window.
     let k = if gapped { rng.random_range(2..=3) } else { rng.random_range(2..=4) };
     let victim = if anomalous { Some(rng.random_range(0..k)) } else { None };
 

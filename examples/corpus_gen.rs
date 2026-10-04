@@ -2,7 +2,7 @@
 //!
 //! Each program allocates several pointers, each with its own `free_k`/`use_k`
 //! call site, and interleaves their operations with `work_*` filler. Clean and
-//! buggy programs contain the *same* set of frees and uses — only in a buggy
+//! buggy programs contain the *same* set of frees and uses; only in a buggy
 //! program is exactly one pointer (the victim) used after it is freed, while
 //! the others are used correctly (decoy frees). So detection cannot rely on
 //! token presence, and attribution must pick the victim's free among several.

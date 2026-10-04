@@ -6,7 +6,7 @@ use crate::tensor::matmul::batched_matmul;
 ///
 /// Same construction as [`attention_rollout`] (head-average, residual mix
 /// `0.5·A + 0.5·I`, multiply across layers) but built from autograd `Var`
-/// operations so gradients flow back into the attention weights — letting the
+/// operations so gradients flow back into the attention weights, which lets the
 /// rollout itself be supervised. Returns `[batch, seq, seq]`.
 ///
 /// Head-averaged residual-mixed rows already sum to 1, so no explicit
