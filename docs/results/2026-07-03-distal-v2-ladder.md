@@ -1,3 +1,8 @@
+> 2026-07-07: the model row below (0.877 ± 0.068) is one corpus realization.
+> Pooled over 3 data seeds it is 0.807 ± 0.152, and the deterministic baseline
+> rows move too. `2026-07-07-dataseed-variance.md` supersedes this file's
+> error bars; the numbers here are left as measured.
+
 # Distal v2 (gapped) benchmark: full rule ladder
 
 Corpus: `cargo run --release --example synth_distal_gen -- 400 instrumentation/out/distal_v2 1 gapped`
@@ -5,22 +10,25 @@ Corpus: `cargo run --release --example synth_distal_gen -- 400 instrumentation/o
 causal write is never trigger-adjacent, trigger carries the object id, first
 same-object write after the trigger is the cause, all traces ≤ 64 events).
 Eval: `train_real instrumentation/out/distal_v2` (5 model seeds, object_bias 4,
-bidirectional, cause-supervised — heuristics unsupervised, disclosed).
+bidirectional, cause-supervised; heuristics unsupervised, disclosed).
 
 ## Findings
 
 1. **The v1 circularity fix worked:** trig-adjacent collapses from 1.000 to
-   0.026 — no adjacency rule survives the gapped construction.
+   0.026; no adjacency rule survives the gapped construction.
 2. **The oracle rule is still perfect, by construction:** trig-window ("first
    same-object write after the same-object trigger") scores 1.000 ± 0.000.
-   Rule-labeled synthetic data always has a perfect oracle; this row is the
-   honesty anchor of the benchmark.
+   Rule-labeled synthetic data always has a perfect oracle, and every model
+   number on this corpus has to be read against that row.
 3. **The model closes most of the gap when the marker is visible to its
    priors:** 0.877 ± 0.068 (vs 0.537 ± 0.118 on v1, where the trigger token
    carried object id 0 and was invisible to the same-object attention bias).
    Comparable to the bi-LSTM on the same corpus (0.856 ± 0.113,
    `docs/results/2026-07-03-lstm-baseline.md`). Still below the oracle.
 4. Recency-family and spectrum-FL baselines are all ≈ 0 at Hit@1.
+
+± is the population standard deviation over the 5 model seeds, n = 5 (divide
+by n), on a single corpus realization.
 
 ## Aggregate over 5 seeds (7, 42, 99, 1234, 2025), mean ± std
 

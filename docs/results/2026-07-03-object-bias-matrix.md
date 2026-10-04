@@ -1,13 +1,24 @@
+> 2026-07-07: partly superseded. The distal v2 bias-4 cell below (0.877 ±
+> 0.068) is one corpus realization; pooled over 3 data seeds it is 0.807 ±
+> 0.152. The UAF cells survive the crash-window eval unchanged
+> (`attrib_dropped = 0`), but the UAF bias-4 cell pools to 0.818 ± 0.210 over
+> 3 data seeds. Numbers below are left as they were measured; read
+> `2026-07-07-dataseed-variance.md` alongside them.
+
 # Object-bias ablation matrix
 
 `object_bias` is an additive attention bonus on same-object keys
-(`src/model.rs`) — a hand-injected relational prior that encodes the domain
+(`src/model.rs`): a hand-injected relational prior that encodes the domain
 answer ("a use relates to same-object events") directly into attention.
 This matrix quantifies how much of "the model's" performance is actually the
 prior. 5 model seeds per cell (7, 42, 99, 1234, 2025); UAF corpus regenerated
 with `corpus_gen 800 … 99` + ASan capture (398 anomalous; 82 anomalous test
 traces). Runs: sequential arms in `docs/results/matrix-logs/`, per-seed
 parallel arms in `docs/results/matrix-logs/fast/`.
+
+± is the population standard deviation over the 5 model seeds in that cell
+(n = 5, divide by n). Only the model init seed varies; the corpus is a single
+realization.
 
 ## model Hit@1, mean ± std
 
@@ -23,7 +34,7 @@ same-obj recency 1.000, same-obj write 0.378, Ochiai 0.000, Tarantula 0.000.
 ## Findings
 
 1. **The injected prior does heavy lifting everywhere:** +0.34 to +0.47
-   Hit@1 from bias 0 → 8 on UAF and v2. Without it the model is at 0.34–0.49
+   Hit@1 from bias 0 → 8 on UAF and v2. Without it the model is at 0.34-0.49
    on every corpus. Any paper number using bias > 0 must be labeled as an
    oracle-prior upper bound, not a learned capability.
 2. **The model never reaches the definitional/oracle rule on any corpus**,
@@ -31,8 +42,8 @@ same-obj recency 1.000, same-obj write 0.378, Ochiai 0.000, Tarantula 0.000.
    the rule's 1.000.
 3. **The prior can hurt when it points away from the marker:** on v1 the
    `trigger` carries object id 0 (invisible to the same-object prior), and
-   bias 8 (0.463 ± 0.209) is no better than bias 4 (0.537 ± 0.118) — the
+   bias 8 (0.463 ± 0.209) is no better than bias 4 (0.537 ± 0.118); the
    prior drags attention toward same-object events while the label-defining
    marker is an object-less token. Consistent with "prior ≠ capability."
-4. Detection AUC is 0.993–1.000 in every cell — detection was never the
-   hard part.
+4. Detection AUC is 0.993-1.000 in every cell. Detection was never the hard
+   part.
