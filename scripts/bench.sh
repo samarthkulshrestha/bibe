@@ -1,7 +1,7 @@
 #!/bin/sh
 # Canonical BiBE benchmark: two corpora only.
-#   1. UAF (real ASan-labeled executions of templated C) — negative control.
-#   2. Distal v2 (gapped synthetic) — capability probe, full rule ladder.
+#   1. UAF (real ASan-labeled executions of templated C): negative control.
+#   2. Distal v2 (gapped synthetic): capability probe, full rule ladder.
 # Regenerates each corpus for several data seeds; train_real itself averages
 # over 5 model seeds. All output logged under docs/results/bench-<date>/.
 set -eu

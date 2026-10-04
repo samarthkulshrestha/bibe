@@ -1,6 +1,6 @@
 #!/bin/sh
 # Remaining object-bias-matrix arms, parallelized across independent work.
-# Logs land in docs/results/matrix-logs/ — nothing to paste, the logs are the
+# Logs land in docs/results/matrix-logs/; nothing to paste, the logs are the
 # deliverable. Safe to re-run; every arm is deterministic (fixed seeds).
 set -eu
 cd "$(dirname "$0")/.."
@@ -23,5 +23,5 @@ for bias in 0 4 8; do
   $T instrumentation/out/traces raw $bias bidi > "$L/bias$bias-uaf.log" 2>&1 &
 done
 wait
-echo "ALL ARMS DONE — aggregates:"
+echo "ALL ARMS DONE. aggregates:"
 grep -A40 "aggregate over" "$L"/bias*.log | grep -E "log|model_hit1"

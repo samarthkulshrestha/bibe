@@ -20,7 +20,7 @@ CONV="$ROOT/target/release/examples/trace_convert"
 
 # Build+run+convert each program. Independent per file, so fan out across
 # cores: JOBS parallel workers (default = CPU count) instead of one clang at a
-# time. This is the capture bottleneck — serial, it barely uses one core.
+# time. Run serially this step uses one core and dominates the wall clock.
 JOBS=${JOBS:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) )}
 export CC OUT CONV
 

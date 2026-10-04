@@ -1,8 +1,8 @@
 #!/bin/sh
-# Remaining matrix arms, one process per (arm, seed) — saturates an M-series
-# CPU instead of running seeds sequentially. Results identical (fixed seeds);
-# only wall-clock changes. Requires instrumentation/out/traces to exist
-# (the UAF capture — already done if uaf-gen.log says "captured 800 traces").
+# Remaining matrix arms, one process per (arm, seed), so the whole sweep runs
+# at once instead of one seed at a time. Results identical (fixed seeds); only
+# wall-clock changes. Requires instrumentation/out/traces to exist (the UAF
+# capture; already done if uaf-gen.log says "captured 800 traces").
 set -eu
 cd "$(dirname "$0")/.."
 L=docs/results/matrix-logs/fast
@@ -27,7 +27,7 @@ for f in glob.glob(sys.argv[1] + "/*.log"):
         m = re.match(r"\s+(\w+)\s+([\d.]+) ±", line)
         if m:
             vals[(arm, m.group(1))].append(float(m.group(2)))
-print("ALL ARMS DONE — mean ± std over seeds:")
+print("ALL ARMS DONE. mean ± std over seeds (population std):")
 for (arm, metric), xs in sorted(vals.items()):
     if "model" in metric or metric == "detection_auc":
         print(f"  {arm:<12} {metric:<16} {statistics.mean(xs):.3f} ± {statistics.pstdev(xs):.3f}  (n={len(xs)})")
