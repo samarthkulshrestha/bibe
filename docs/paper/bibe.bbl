@@ -16,7 +16,7 @@ Rui Abreu, Peter Zoeteweij, and Arjan J.~C. van Gemund.
 {Cesanta Software}.
 \newblock mjs: Embedded javascript engine. issue \#322 (heap-use-after-free,
   cwe-416).
-\newblock \url{https://github.com/cesanta/mjs}, 2024.
+\newblock \url{https://github.com/cesanta/mjs/issues/322}, 2026.
 
 \bibitem{deeplog}
 Min Du, Feifei Li, Guineng Zheng, and Vivek Srikumar.
