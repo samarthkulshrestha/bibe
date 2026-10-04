@@ -12,9 +12,7 @@ fn assert_approx_eq(a: f32, b: f32, tol: f32) {
     );
 }
 
-// ============================================================
 // stable_softmax
-// ============================================================
 
 #[test]
 fn test_softmax_sums_to_one() {
@@ -135,9 +133,7 @@ fn test_softmax_method() {
     assert_eq!(sm1.data, sm2.data);
 }
 
-// ============================================================
 // logsumexp
-// ============================================================
 
 #[test]
 fn test_logsumexp_matches_naive_on_safe_inputs() {
@@ -204,9 +200,7 @@ fn test_logsumexp_method() {
     assert_eq!(lse1.data, lse2.data);
 }
 
-// ============================================================
 // clip
-// ============================================================
 
 #[test]
 fn test_clip_basic() {
@@ -267,9 +261,7 @@ fn test_clip_method() {
     assert_eq!(c1.data, c2.data);
 }
 
-// ============================================================
 // safe_log
-// ============================================================
 
 #[test]
 fn test_safe_log_normal_values() {
@@ -312,9 +304,7 @@ fn test_safe_log_large_epsilon() {
     assert_approx_eq(l.get(&[2]), 0.0, 1e-6);
 }
 
-// ============================================================
 // NaN / Inf detection
-// ============================================================
 
 #[test]
 fn test_has_nan_false() {
@@ -364,9 +354,7 @@ fn test_all_finite_false_inf() {
     assert!(!all_finite(&x));
 }
 
-// ============================================================
-// Combined / integration
-// ============================================================
+// combined / integration
 
 #[test]
 fn test_softmax_then_log_with_clip() {

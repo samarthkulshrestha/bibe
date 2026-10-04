@@ -2,9 +2,7 @@ use bibe::tensor::Tensor;
 use bibe::tensor::broadcast::{broadcast_shapes, broadcast_to, reduce_sum, reduce_mean, reduce_max};
 use bibe::tensor::ops;
 
-// ============================================================
 // broadcast_shapes
-// ============================================================
 
 #[test]
 fn test_broadcast_shapes_same() {
@@ -53,9 +51,7 @@ fn test_broadcast_shapes_incompatible_inner() {
     broadcast_shapes(&[2, 3], &[4, 3]);
 }
 
-// ============================================================
 // broadcast_to
-// ============================================================
 
 #[test]
 fn test_broadcast_to_noop() {
@@ -112,9 +108,7 @@ fn test_broadcast_to_scalar_to_matrix() {
     assert!(result.data.iter().all(|&v| v == 5.0));
 }
 
-// ============================================================
-// Broadcasting through element-wise ops
-// ============================================================
+// broadcasting through element-wise ops
 
 #[test]
 fn test_add_broadcast_col_plus_row() {
@@ -193,9 +187,7 @@ fn test_operator_overload_with_broadcast() {
     assert_eq!(c.data, vec![11.0, 21.0, 12.0, 22.0, 13.0, 23.0]);
 }
 
-// ============================================================
 // reduce_sum
-// ============================================================
 
 #[test]
 fn test_reduce_sum_dim0() {
@@ -259,9 +251,7 @@ fn test_reduce_sum_invalid_dim() {
     reduce_sum(&tensor, 2);
 }
 
-// ============================================================
 // reduce_mean
-// ============================================================
 
 #[test]
 fn test_reduce_mean_dim0() {
@@ -285,9 +275,7 @@ fn test_reduce_mean_dim1() {
     assert_eq!(result.data, vec![2.0, 5.0]);
 }
 
-// ============================================================
 // reduce_max
-// ============================================================
 
 #[test]
 fn test_reduce_max_dim0() {
@@ -327,9 +315,7 @@ fn test_reduce_max_1d() {
     assert_eq!(result.data, vec![5.0]);
 }
 
-// ============================================================
-// Combined: broadcast + reduce roundtrip
-// ============================================================
+// combined: broadcast + reduce roundtrip
 
 #[test]
 fn test_broadcast_then_reduce_recovers_original() {

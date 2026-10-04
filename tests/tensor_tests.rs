@@ -1,8 +1,6 @@
 use bibe::tensor::Tensor;
 
-// ============================================================
 // Tensor::new - constructor
-// ============================================================
 
 #[test]
 fn test_new_creates_tensor_with_correct_data() {
@@ -31,9 +29,7 @@ fn test_new_mismatched_data_and_shape() {
     Tensor::new(vec![1.0, 2.0, 3.0], vec![2, 3]);
 }
 
-// ============================================================
 // Tensor::zeros and Tensor::ones
-// ============================================================
 
 #[test]
 fn test_zeros_1d() {
@@ -68,9 +64,7 @@ fn test_ones_2d() {
     assert!(tensor.data.iter().all(|&v| v == 1.0));
 }
 
-// ============================================================
 // Tensor::randn
-// ============================================================
 
 #[test]
 fn test_randn_correct_shape() {
@@ -95,9 +89,7 @@ fn test_randn_approximately_standard_normal() {
     assert!((variance - 1.0).abs() < 0.1, "variance {variance} not close to 1");
 }
 
-// ============================================================
-// Xavier initialization
-// ============================================================
+// xavier initialization
 
 #[test]
 fn test_xaviern_correct_shape() {
@@ -136,9 +128,7 @@ fn test_xavieru_within_bounds() {
     assert!(tensor.data.iter().all(|&v| v >= -limit && v <= limit));
 }
 
-// ============================================================
-// Strides / shape calculation
-// ============================================================
+// strides / shape calculation
 
 #[test]
 fn test_strides_1d() {
@@ -178,9 +168,7 @@ fn test_strides_3d_row_major() {
     assert_eq!(tensor.get(&[1, 2, 3]), 24.0);
 }
 
-// ============================================================
-// Indexing: get and set
-// ============================================================
+// indexing: get and set
 
 #[test]
 fn test_get_set_2d() {
@@ -231,9 +219,7 @@ fn test_index_trait() {
     assert_eq!(tensor[[1, 1]], 99.0);
 }
 
-// ============================================================
-// Transpose (2D)
-// ============================================================
+// transpose (2D)
 
 #[test]
 fn test_transpose_shape() {
@@ -313,9 +299,7 @@ fn test_transpose_non_2d_panics() {
     tensor.transpose();
 }
 
-// ============================================================
-// Reshape
-// ============================================================
+// reshape
 
 #[test]
 fn test_reshape_2d_to_2d() {
@@ -393,9 +377,7 @@ fn test_reshape_non_contiguous_via_contiguous() {
     assert_eq!(reshaped.get(&[5]), 6.0);
 }
 
-// ============================================================
-// Contiguity
-// ============================================================
+// contiguity
 
 #[test]
 fn test_new_tensor_is_contiguous() {
@@ -427,9 +409,7 @@ fn test_contiguous_on_contiguous_is_noop() {
     assert_eq!(tensor.data, c.data);
 }
 
-// ============================================================
-// Clone
-// ============================================================
+// clone
 
 #[test]
 fn test_clone_independence() {
@@ -440,9 +420,7 @@ fn test_clone_independence() {
     assert_eq!(cloned.get(&[0]), 99.0);
 }
 
-// ============================================================
-// He initialization
-// ============================================================
+// he initialization
 
 #[test]
 fn test_hen_correct_shape() {

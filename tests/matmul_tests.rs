@@ -1,9 +1,7 @@
 use bibe::tensor::Tensor;
 use bibe::tensor::matmul::{matmul, matmul_blocked, batched_matmul};
 
-// ============================================================
-// Helper
-// ============================================================
+// helper
 
 fn assert_approx_eq(a: &[f32], b: &[f32], tol: f32) {
     assert_eq!(a.len(), b.len(), "length mismatch: {} vs {}", a.len(), b.len());
@@ -16,9 +14,7 @@ fn assert_approx_eq(a: &[f32], b: &[f32], tol: f32) {
     }
 }
 
-// ============================================================
-// Naive 2D matmul
-// ============================================================
+// naive 2D matmul
 
 #[test]
 fn test_matmul_2d_basic() {
@@ -117,9 +113,7 @@ fn test_matmul_1d_panics() {
     matmul(&a, &b);
 }
 
-// ============================================================
-// Cache-blocked matmul
-// ============================================================
+// cache-blocked matmul
 
 #[test]
 fn test_matmul_blocked_matches_naive() {
@@ -172,9 +166,7 @@ fn test_matmul_blocked_small() {
     assert_eq!(c.data, vec![19.0, 22.0, 43.0, 50.0]);
 }
 
-// ============================================================
-// Batched matmul
-// ============================================================
+// batched matmul
 
 #[test]
 fn test_batched_matmul_basic() {
@@ -269,9 +261,7 @@ fn test_batched_matmul_inner_mismatch() {
     batched_matmul(&a, &b);
 }
 
-// ============================================================
-// Tensor method
-// ============================================================
+// tensor method
 
 #[test]
 fn test_tensor_matmul_method() {
@@ -283,9 +273,7 @@ fn test_tensor_matmul_method() {
     assert_eq!(c1.data, c2.data);
 }
 
-// ============================================================
-// Properties
-// ============================================================
+// properties
 
 #[test]
 fn test_matmul_associative() {

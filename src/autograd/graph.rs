@@ -185,9 +185,7 @@ impl Var {
     }
 }
 
-// ============================================================
 // Var methods for each tracked operation
-// ============================================================
 
 impl Var {
     pub fn add(&self, other: &Var) -> Var {

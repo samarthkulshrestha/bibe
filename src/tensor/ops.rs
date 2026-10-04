@@ -1,8 +1,6 @@
 use crate::tensor::{broadcast::{broadcast_shapes, broadcast_to}, Tensor};
 
-// ============================================================
-// Binary element-wise operations (require exact shape match)
-// ============================================================
+// binary element-wise operations (require exact shape match)
 
 /// Element-wise addition with broadcasting: a + b
 pub fn add(a: &Tensor, b: &Tensor) -> Tensor {
@@ -60,9 +58,7 @@ pub fn div(a: &Tensor, b: &Tensor) -> Tensor {
     Tensor::new(data, out_shape)
 }
 
-// ============================================================
-// Unary element-wise operations
-// ============================================================
+// unary element-wise operations
 
 /// Element-wise negation: -a
 pub fn neg(a: &Tensor) -> Tensor {
@@ -135,9 +131,7 @@ pub fn gelu(a: &Tensor) -> Tensor {
     Tensor::new(data, a.shape().to_vec())
 }
 
-// ============================================================
-// Scalar operations
-// ============================================================
+// scalar operations
 
 /// Add scalar to all elements: a + c
 pub fn add_scalar(a: &Tensor, c: f32) -> Tensor {
@@ -163,9 +157,7 @@ pub fn sub_scalar(a: &Tensor, c: f32) -> Tensor {
     Tensor::new(data, a.shape().to_vec())
 }
 
-// ============================================================
-// Tensor methods for ergonomics
-// ============================================================
+// tensor methods for ergonomics
 
 impl Tensor {
     pub fn shape(&self) -> &[usize] {
@@ -225,9 +217,7 @@ impl Tensor {
     }
 }
 
-// ============================================================
-// Rust operator overloading for convenience
-// ============================================================
+// rust operator overloading for convenience
 
 use std::ops;
 

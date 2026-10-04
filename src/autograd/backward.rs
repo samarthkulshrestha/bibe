@@ -4,9 +4,7 @@ use crate::tensor::matmul::matmul;
 use crate::tensor::ops;
 use super::node::GradFn;
 
-// ============================================================
-// Helper: reduce a gradient to match a (possibly broadcast) shape
-// ============================================================
+// helper: reduce a gradient to match a (possibly broadcast) shape
 
 /// When `a` was broadcast from `target_shape` to `grad.shape()` during
 /// the forward pass, the backward pass must sum out the broadcast dims
@@ -36,9 +34,7 @@ pub(crate) fn reduce_to_shape(grad: &Tensor, target_shape: &[usize]) -> Tensor {
     result
 }
 
-// ============================================================
-// Backward function structs
-// ============================================================
+// backward function structs
 
 // --- Add: d(a+b)/da = 1, d(a+b)/db = 1 ---
 
