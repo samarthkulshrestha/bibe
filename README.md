@@ -1,36 +1,35 @@
 # BiBE: Bidirectional Bug Exorcist
 
-A machine learning system that analyzes program execution traces to find bugs and explain what caused them.
+A transformer, written from scratch in Rust with no ML framework, that reads
+program execution traces and tries to name the earlier event that caused a
+crash.
 
-## What is BiBE?
+**Read the results section before the feature list.** The headline finding is
+negative: on the one bug class with an automatic ground-truth oracle, a
+one-line heuristic beats the learned model, and the bidirectional attention
+the project is named after does not help on any benchmark here. The name
+predates that ablation.
 
-When programs crash or behave incorrectly, understanding *why* often requires manually digging through thousands of lines of execution logs. BiBE automates this process by using a transformer neural network (similar to ChatGPT's architecture) to:
+## The problem
 
-1. **Detect anomalies** in execution traces (crashes, deadlocks, performance issues)
-2. **Identify root causes** by tracing back through the execution history to find which earlier events led to the problem
+Traditional debugging tools show you *where* a crash happened, not always
+*why*. A segfault at line 1000 may be caused by an allocation at line 200 and
+a `free()` at line 800; a deadlock, by a lock order established much earlier.
+Finding that link by hand means reading thousands of trace events.
 
-## The Problem
+BiBE tries to do it by learning: flag the anomalous event, then use attention
+to point back at the event that explains it.
 
-Traditional debugging tools show you *where* a crash happened, but not always *why*. For example:
-- A segfault at line 1000 might be caused by a memory allocation at line 200 and a free() at line 800
-- A deadlock might be caused by locks acquired in a specific order across multiple threads
-- A performance regression might stem from cache-unfriendly memory access patterns earlier in execution
+## How it works
 
-Finding these causal relationships manually is time-consuming and error-prone.
+BiBE reads execution traces captured by instrumentation or profiling tools
+(`perf`, or the `-finstrument-functions` shim in `instrumentation/`): which
+functions were called, when, at what call depth, with performance counters
+alongside. A transformer over that sequence learns normal vs. buggy
+execution, flags the suspicious event, and attention rollout ranks the
+earlier events that explain it.
 
-## How BiBE Works
-
-BiBE reads execution traces captured by profiling tools (like `perf`) that record:
-- Which functions were called
-- When they were called
-- Performance counters (cache misses, branch mispredictions, etc.)
-
-It then uses a custom-built transformer model to:
-1. Learn patterns of normal vs. buggy execution
-2. Flag suspicious events in new traces
-3. Use attention mechanisms to show which earlier events are causally related to the bug
-
-**Original hypothesis (now ablated)**: BiBE attends *both* forward and backward in execution traces, on the theory that a crash can be explained by events that happen *after* it (like a deallocation that should have happened earlier). The ablation did not support this: a backward-only (causal) model matches or beats the bidirectional one on every current benchmark, because observed causes precede their symptoms (`docs/results/2026-07-03-bidi-ablation.md`). The forward-attention case remains an untested hypothesis that no current benchmark exercises.
+**Original hypothesis, now ablated.** BiBE attends *both* forward and backward in execution traces, on the theory that a crash can be explained by events that happen *after* it (like a deallocation that should have happened earlier). The ablation did not support this: a backward-only (causal) model matches or beats the bidirectional one on every current benchmark, because observed causes precede their symptoms (`docs/results/2026-07-03-bidi-ablation.md`). The forward-attention case remains an untested hypothesis that no current benchmark exercises.
 
 ## Current Status
 
@@ -38,26 +37,26 @@ The full system is implemented from scratch in Rust and trains end-to-end. What 
 
 - **Numerical core**: dense tensors, broadcasting, matmul, numerically stable softmax/log-sum-exp.
 - **Autograd**: reverse-mode automatic differentiation with finite-difference gradient checks on every operation.
-- **Model**: multi-head bidirectional attention, pre-LayerNorm transformer blocks, embeddings, sinusoidal positional encodings, a per-event anomaly head, and attention-rollout attribution.
+- **Model**: multi-head attention (bidirectional or causal, selectable; causal is the stronger setting on every benchmark here), pre-LayerNorm transformer blocks, embeddings, sinusoidal positional encodings, a per-event anomaly head, and attention-rollout attribution.
 - **Training**: Adam, warmup + cosine learning-rate schedule, gradient clipping, focal / contrastive / attention-sparsity / attribution-supervision losses, and parameter checkpointing.
 - **Data**: a trace format with parser/serializer, vocabulary, sliding windows, batching, a synthetic trace generator, and a **real-trace capture pipeline** (instrument C programs, run them, and label bugs automatically with AddressSanitizer).
 - **Evaluation**: AUC-ROC, Precision@K, Hit@K, MRR for detection, localization, and attribution.
 
-### Results so far (honest)
+### Results so far
 
 **Finding 1 (negative): simple heuristics solve sanitizer-catchable attribution.**
-On use-after-free — the one bug class with an automatic oracle (ASan) — the
+On use-after-free, the one bug class with an automatic oracle (ASan), the
 cause is *definitionally* the most-recent same-object event before the crash,
 so the one-line heuristic "attribute to the most-recent same-object event"
 scores Hit@1 = 1.0. The learned model scores ≈ 0.585, and reaches ≈ 0.99 only
 when the same-object heuristic is hand-injected into attention as an additive
-`object_bias` — an oracle prior wired in by hand, not a learned capability.
+`object_bias`: an oracle prior wired in by hand, not a learned capability.
 ML adds no value over a trivial rule on UAF; UAF serves as a negative control.
 
 **Finding 2 (capability probe): cause-supervised attention partially recovers
 a planted relational pattern.** On synthetic distal-cause traces
 (`examples/synth_distal_gen.rs`), the model reaches Hit@1 = 0.537 ± 0.118
-(5 seeds) while recency-family baselines score 0.0–0.29 — but the generator's
+(5 seeds) while recency-family baselines score 0.0 to 0.29. But the generator's
 own oracle rule ("the same-object write immediately preceded by a `trigger`",
 `trig-adjacent` in `train_real.rs`) scores 1.000 ± 0.000, as any oracle rule
 must on rule-labeled synthetic data. The honest reading: the model partially
@@ -65,19 +64,33 @@ learns a relational pattern from cause supervision alone, and never beats the
 best hand-coded rule. Detection (AUC ≈ 1.0) and localization (Hit@1 ≈ 1.0)
 are solved, but were never the hard part.
 
-Evaluated config: d_model 64, 4 heads, 2 layers, window 64, 240–800 traces —
-smaller than the design targets elsewhere in this README. The traces are real
-executions of small *templated* programs; generalization to real applications
-is untested and is the main open question. Full baseline ladders and per-seed
-variance live in `docs/results/`.
+Evaluated config: d_model 64, 4 heads, 2 layers, window 64, 240 to 800 traces,
+smaller than the design targets. The traces are real executions of small
+*templated* programs; generalization to real applications is untested and is
+the main open question. Full baseline ladders and per-seed variance live in
+`docs/results/`.
 
-## Why Build From Scratch?
+## Prior work
 
-Rather than using existing ML frameworks (PyTorch, TensorFlow), BiBE is implemented from the ground up in Rust to:
-- Ensure complete understanding of the numerical stability requirements
-- Make attention weights fully interpretable and trustworthy
-- Optimize specifically for execution trace analysis
-- Learn the fundamentals deeply rather than treating ML as a black box
+Learned anomaly detection over execution and log streams is not new.
+[DeepLog](https://doi.org/10.1145/3133956.3134015) (CCS 2017) runs an LSTM
+over log templates; [LogBERT](https://arxiv.org/abs/2103.04475) uses a masked
+transformer for the same. Spectrum-based fault localization
+([Tarantula](https://doi.org/10.1145/1101908.1101949),
+[Ochiai](https://doi.org/10.1109/TAIC.PART.2007.13)) and delta debugging
+attack root-cause attribution without learning at all, and for the bug class
+measured here they win. BiBE differs in operating on function-level execution
+traces with per-event cause supervision and attention-rollout attribution,
+and in reporting where that fails.
+
+## Why from scratch
+
+No PyTorch, no `candle`, no `burn`. Two dependencies total (`rand`,
+`rand_distr`). Attention weights are the output being studied, so there is
+something to be said for owning every line between the trace and the weight,
+and for not having a framework's fused kernels in the way when a gradient
+check disagrees. The honest other half: this was also a way to learn the
+machinery by building it.
 
 ## Getting Started
 
@@ -88,7 +101,7 @@ Rather than using existing ML frameworks (PyTorch, TensorFlow), BiBE is implemen
 ### Build and Test
 ```bash
 cargo build
-cargo test          # ~430 tests, including finite-difference gradient checks
+cargo test          # 450 tests, including finite-difference gradient checks
 ```
 
 ### Run the experiments
@@ -115,17 +128,26 @@ python3 baselines/lstm_attrib.py <traces_dir>   # learned LSTM baseline
 - `src/model.rs` - the assembled BiBE model
 - `examples/` - runnable training, study, and capture-conversion programs
 - `instrumentation/` - C instrumentation shim, sample programs, capture scripts
-- `PLAN.md` - technical design document
+- `baselines/` - PyTorch bi-LSTM attribution baseline
 
-## Goals
+## Reproducing the real-trace pilot
 
-The ultimate goal is to create a tool that, given an execution trace from a crashed program, can:
-1. Highlight the exact event where things went wrong
-2. Show the chain of events that led to it
-3. Provide interpretable explanations backed by attention weights
+One real crash, [mjs issue #322](https://github.com/cesanta/mjs) (heap
+use-after-free, CWE-416), captured through the pipeline and checked in at
+`instrumentation/real/poc.trace`. Full capture steps in
+`instrumentation/real/README.md`.
 
-This would significantly speed up debugging complex systems issues, especially in large codebases where manual trace analysis is impractical.
+```
+$ python3 instrumentation/real/pilot_analyze.py
+positional recency rank: 24
+most-recent 'free' substring rank: 1
+vocab size: 178 | total events: 12213
+```
+
+The naive recency baseline puts the true cause 24th; a one-line "most recent
+free-shaped call" rule puts it 1st. Same conclusion as the synthetic UAF
+benchmark, now on code we did not write.
 
 ## License
 
-To be determined.
+MIT. See `LICENSE`.
